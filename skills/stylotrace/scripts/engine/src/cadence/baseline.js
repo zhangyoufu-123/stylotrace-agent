@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { lengthSeriesStats } from './metrics.js';
 import { segment } from './segment.js';
+import { collectAuthorCorpus, deviationFromAuthor } from './author-corpus.js';
 
 const MIN_SAMPLES = 5;
 
@@ -21,8 +22,38 @@ function baselineFile(workspace) {
   return path.join(workspace, 'cadence', 'baseline.json');
 }
 
-/** 读取作者基线。没有工作区或没有历史 → 返回 insufficient，不编数。 */
+/**
+ * 读取作者基线。
+ *
+ * **样本来自 agent 自己收集的作者内容**（归档作品 / 作者亲手改后的文本 / 当前成稿），
+ * 不去外面找文章。工作区里写得越多，基线越准；不够就诚实标 insufficient。
+ */
 export function readBaseline({ workspace = null, authorId = null, genre = null } = {}) {
+  // 首选：作者语料（agent 自有数据）
+  if (workspace) {
+    try {
+      const corpus = collectAuthorCorpus(workspace, { includeDraft: false });
+      if (corpus.stats.pieces >= MIN_SAMPLES) {
+        return {
+          source: 'author',
+          author_id: authorId,
+          samples: corpus.stats.pieces,
+          cv: corpus.stats.cv,
+          mean: corpus.stats.mean,
+          mad: corpus.stats.mad,
+          cvRange: corpus.stats.cvRange,
+          bySource: corpus.bySource,
+          shortSamples: corpus.stats.shortSamples,
+          note:
+            `来自你自己归档的 ${corpus.stats.pieces} 篇（作品库 ${corpus.bySource.library || 0} · 修改轨迹 ${corpus.bySource.edit || 0}）` +
+            (corpus.stats.shortSamples
+              ? `，其中 ${corpus.stats.shortSamples} 篇偏短（<8 句读），CV 波动会大一些`
+              : ''),
+        };
+      }
+    } catch {}
+  }
+  // 兼容：工作区里手工写的 baseline.json（早期版本）
   let samples = [];
   if (workspace) {
     try {
@@ -44,13 +75,25 @@ export function readBaseline({ workspace = null, authorId = null, genre = null }
   if (genre && GENRE_BASELINES[genre]) {
     return { source: 'genre', genre, ...GENRE_BASELINES[genre] };
   }
+  // 拿到语料但不够 5 篇：把"攒了多少"如实告诉用户，而不是一句"样本不足"
+  let partial = null;
+  if (workspace) {
+    try {
+      const c = collectAuthorCorpus(workspace, { includeDraft: false });
+      partial = c.stats;
+    } catch {}
+  }
   return {
     source: 'insufficient',
-    samples: samples.length,
+    samples: partial ? partial.pieces : samples.length,
     need: MIN_SAMPLES,
-    note: `作者样本 ${samples.length} 篇，不足 ${MIN_SAMPLES} 篇，暂不提供个人基线（只报告绝对值，不下结论）`,
+    note: partial
+      ? `你自己的语料 ${partial.pieces}/${MIN_SAMPLES} 篇（作品库会在一篇写完时自动归档）——攒够 ${MIN_SAMPLES} 篇就能给出你自己的节奏基线。现在只报绝对值，不下结论。`
+      : `还没有你自己的语料。写完或导入几篇后，CADENCE 会用**你自己的**节奏做基线。`,
   };
 }
+
+export { deviationFromAuthor };
 
 /** 把一篇文本的统计追加进作者基线（用于冷启动逐步攒样本）。 */
 export function writeBaseline(workspace, text, { authorId = null } = {}) {

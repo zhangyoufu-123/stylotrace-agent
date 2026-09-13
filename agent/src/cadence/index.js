@@ -16,7 +16,9 @@ import { boundaryMisalignments, breathGroups } from './breath.js';
 import { detectAntipatterns } from './antipattern.js';
 import { buildPrompt, buildSuggestions } from './suggest.js';
 import { applyToText } from './apply.js';
-import { readBaseline } from './baseline.js';
+import { readBaseline, deviationFromAuthor } from './baseline.js';
+import { collectAuthorCorpus } from './author-corpus.js';
+import { frozenSentenceIndexes, lockedSpansFromDecisions } from './adapters.js';
 import { metricalReport } from './meter.js';
 import { toSsml } from './ssml.js';
 
@@ -51,7 +53,10 @@ export function analyze(text, { authorId = null, workspace = null, standard = nu
   const gStats = lengthSeriesStats(groupLengths);
 
   // 冷启动与短文本纪律（规格 §6.3）：句读 < 8 → 明确拒绝判定
+  // 基线样本来自 agent 自己收集的作者内容，不去外面找文章
   const baseline = readBaseline({ workspace, authorId, genre: null });
+  const corpus = workspace ? collectAuthorCorpus(workspace, { includeDraft: false }) : null;
+  const deviation = corpus ? deviationFromAuthor(corpus, stats.cv) : { ok: false, source: 'insufficient' };
   const insufficient = sentences.length < 8;
   const verdict = insufficient ? 'insufficient' : 'ok';
 
@@ -65,6 +70,18 @@ export function analyze(text, { authorId = null, workspace = null, standard = nu
     author_id: authorId,
     baseline_source: baseline.source,
     baseline,
+    // 作者语料概况：让用户看到"系统攒了多少你自己的东西"
+    author_corpus: corpus
+      ? {
+          pieces: corpus.stats.pieces,
+          skipped: corpus.stats.skipped,
+          bySource: corpus.bySource,
+          cv: corpus.stats.cv,
+          cvRange: corpus.stats.cvRange,
+        }
+      : null,
+    // 相对**你自己**的偏离（唯一的"好/坏"口径，且只说相对自己）
+    deviation,
     insufficient,
     sentence_level: {
       n: sentences.length,
@@ -93,9 +110,27 @@ export function analyze(text, { authorId = null, workspace = null, standard = nu
   };
 }
 
-/** 生成建议（可拒绝、可锁定）。 */
-export function suggest(report, { lockedSpans = [], targetSpans = null } = {}) {
-  return buildSuggestions(report, { lockedSpans, targetSpans });
+/**
+ * 生成建议（可拒绝、可锁定）。
+ *
+ * 关键接缝：**作者冻结的决断自动进入锁定集合**——决断卡里是作者自己指定
+ * "AI 不许动"的句子，节奏建议要是动了它，就等于系统在劝他改掉自己的表达。
+ * 传 workspace 即自动生效；显式传 lockedSpans 会与冻结句合并。
+ */
+export function suggest(report, { lockedSpans = [], targetSpans = null, workspace = null } = {}) {
+  let lockIdx = [];
+  if (workspace) {
+    const frozen = lockedSpansFromDecisions(workspace);
+    lockIdx = frozenSentenceIndexes(report, frozen);
+  }
+  const explicit = lockedSpans.map((s) => (Array.isArray(s) ? s : [s.start, s.end]));
+  const merged = [...explicit, ...lockIdx];
+  const out = buildSuggestions(report, { lockedSpans: merged, targetSpans });
+  return out.map((s) => ({
+    ...s,
+    // 让调用方看得见"这条建议没有覆盖作者的冻结句"
+    frozen_protected: lockIdx.length > 0,
+  }));
 }
 
 /** 交给大模型时的结构化输入（不是"请改得有节奏些"）。 */

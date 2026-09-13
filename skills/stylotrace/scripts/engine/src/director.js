@@ -751,6 +751,34 @@ export async function agentStep(cfg, wsDir, { lastInput = '', quote = null } = {
       state.quality.norm = { skipped: true, reason: '学术规范审计失败（静默跳过）' };
     }
     state.quality.factVerify = fc.items.filter((i) => i.supported === 'verify').length;
+
+    // ── CADENCE 节奏体检（shadow mode：只记录，不干预）──
+    // 规格 §2.2 第二条：默认旁路运行，通过开关逐项接管。
+    // 放在这里是因为：① 零 API 调用，不增加成本；② 交付前作者最需要看到
+    // "这篇读起来是不是一个调"；③ 作者冻结的决断会自动被排除在建议之外。
+    try {
+      const CD = await import('./cadence/index.js');
+      const rep = CD.analyze(draftText, { workspace });
+      const sug = rep.insufficient ? [] : CD.suggest(rep, { workspace });
+      state.quality.rhythm = {
+        verdict: rep.verdict,
+        sentences: rep.sentence_level.n,
+        breathGroups: rep.breath_level.groups.length,
+        groupsPerSentence: rep.breath_level.groups_per_sentence,
+        cv: rep.sentence_level.cv,
+        mad: rep.sentence_level.mad,
+        misalignments: rep.misalignments.length,
+        antipatterns: (rep.antipatterns || []).map((a) => a.type),
+        suggestions: sug.length,
+        baselineSource: rep.baseline_source,
+        baselineNote: rep.baseline?.note || '',
+        authorCorpus: rep.author_corpus ? rep.author_corpus.pieces : 0,
+        deviation: rep.deviation?.ok ? rep.deviation.note : '',
+        ts: ws.nowIso(),
+      };
+    } catch {
+      state.quality.rhythm = { skipped: true, reason: '节奏体检失败（静默跳过，不影响交付）' };
+    }
     state.quality.ts = ws.nowIso();
     const queries = buildSearchQueries(draftText, {
       factReport: fc,

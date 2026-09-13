@@ -16,6 +16,7 @@ find_cf() {
   if [ -n "${CLOUDFLARED_BIN:-}" ] && [ -x "${CLOUDFLARED_BIN}" ]; then echo "${CLOUDFLARED_BIN}"; return; fi
   for cand in \
     "$(command -v cloudflared 2>/dev/null || true)" \
+    ~/.homebrew/bin/cloudflared \
     /opt/homebrew/bin/cloudflared \
     /usr/local/bin/cloudflared; do
     [ -n "$cand" ] && [ -x "$cand" ] && { echo "$cand"; return; }

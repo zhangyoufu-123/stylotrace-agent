@@ -93,6 +93,26 @@ const TOOLS = [
     },
   },
   {
+    name: 'cadence_analyze',
+    description:
+      'CADENCE 节奏与气群分析（零 API 调用、确定性）：把文本切成**气群**（一口气能说完的单位），找出"一个句子里塞了两个气群"的边界错位，给出可解释、可拒绝、可锁定的断句建议。可选导出语音用的 SSML，或做声律（平仄/体式）检查。不做"是否AI所写"的判定。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: '要分析的文本' },
+        mode: {
+          type: 'string',
+          enum: ['report', 'json', 'ssml', 'meter', 'apply'],
+          description: 'report=人话报告(默认) / json=完整数据 / ssml=语音停顿标记 / meter=声律检查 / apply=应用拆分建议并给出前后对比',
+        },
+        standard: { type: 'string', enum: ['pingshui', 'xinyun', 'mandarin'], description: 'meter 模式下用哪套标准（默认 pingshui）' },
+        lockedSpans: { type: 'array', description: '锁定的 span（如 [[1,1]]），被锁的句子不再给建议', items: { type: 'array' } },
+        workspace: { type: 'string' },
+      },
+      required: ['text'],
+    },
+  },
+  {
     name: 'agent_step',
     description:
       '导演单步（自主决策）：传入用户最新消息（可为空），Stylotrace 自己决定下一步并执行——返回 ask（提问）/ confirm_outline（大纲待确认）/ working（自动推进进度）/ deliver（交付）。宿主只负责转发用户消息，写作流程由 Stylotrace 主导。',
@@ -707,6 +727,48 @@ async function callTool(name, args, cfg) {
         if (st?.decision?.reason) r.decision = st.decision;
       } catch {}
       return { text: JSON.stringify(r, null, 2) };
+    }
+    case 'cadence_analyze': {
+      // 纯规则、零 API：宿主可以放心地对每段文字跑，不会有额外成本
+      const CD = await import('./cadence/index.js');
+      const text = String(args.text || '');
+      if (!text.trim()) return { text: '需要 text 参数（要分析的文本）', isError: true };
+      const mode = String(args.mode || 'report');
+      if (mode === 'meter') {
+        const mr = CD.metricalReport(text, { standard: String(args.standard || 'pingshui') });
+        return { text: JSON.stringify(mr, null, 2) };
+      }
+      const report = CD.analyze(text, { workspace: args.workspace || null });
+      if (mode === 'ssml') return { text: JSON.stringify(CD.toSsml(report), null, 2) };
+      const suggestions = CD.suggest(report, { lockedSpans: args.lockedSpans || [] });
+      if (mode === 'json') {
+        return { text: JSON.stringify({ report, suggestions, prompt: CD.promptFor(report, suggestions) }, null, 2) };
+      }
+      if (mode === 'apply') {
+        const out = CD.apply(text, suggestions);
+        // 结构化返回：宿主自己决定要不要用新文本，以及用哪几条
+        return {
+          text: JSON.stringify(
+            {
+              original: text,
+              revised: out.text,
+              applied: out.applied,
+              skipped: out.skipped,
+              total_change: out.total,
+              per_suggestion: out.effects,
+              report_after: out.report,
+            },
+            null,
+            2,
+          ),
+        };
+      }
+      const body = CD.renderRhythmReport(report);
+      const extra = suggestions.length
+        ? `\n【建议】${suggestions.length} 条（可拒绝、可锁定）\n` +
+          suggestions.slice(0, 5).map((s) => `  · [${s.type}] ${s.reason}`).join('\n')
+        : '';
+      return { text: body + extra };
     }
     case 'interview_step': {
       const w = wsDir(args, cfg);

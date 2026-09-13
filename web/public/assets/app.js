@@ -2892,6 +2892,73 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+
+/* ── CADENCE 节奏与气群：零 API 调用，随便点 ──────────
+   不输出"这是 AI 写的"——只报告结构事实（气群图 + 哪里塞了两口气），
+   以及相对你自己基线的偏离。均匀不等于差，说明文里均匀是优点。 */
+async function runCadence() {
+  const panel = $('cadencePanel');
+  const out = $('cadenceResult');
+  if (!panel.hidden) { panel.hidden = true; return; }
+  panel.hidden = false;
+  out.innerHTML = '<div class="working"><span class="spinner"></span>分析节奏与气群…</div>';
+  try {
+    const r = await apiPost('/api/cadence', { sessionId: sessionId || '', mode: 'report' });
+    if (!r.ok) { out.innerHTML = `<p class="session-sub">${esc(r.error)}</p>`; return; }
+    const rep = r.report, s = rep.sentence_level, b = rep.breath_level;
+    let html = '';
+    if (rep.insufficient) {
+      html += `<p class="cad-note">句读 ${s.n} < 8：<b>不足以判定节奏</b>。这不是报错，是拒绝给你一个不该给的结论。</p>`;
+      out.innerHTML = html; return;
+    }
+    html += `<div class="cad-stats">
+      <div><b>${s.n}</b><span>句读</span></div>
+      <div><b>${b.groups.length}</b><span>气群</span></div>
+      <div><b>${s.cv}</b><span>CV 变异系数</span></div>
+      <div><b>${s.mad}</b><span>MAD 相邻差</span></div>
+      <div><b>${b.groups_per_sentence}</b><span>每句气群</span></div>
+    </div>`;
+    html += `<div class="cad-block"><h4>气群图</h4><div class="cad-groups">` +
+      b.groups.map((g) => `<span class="cad-g${g.splitFromSentence ? ' is-split' : ''}" title="第 ${g.sentenceIndex} 句">${esc(g.text)}<i>${g.length}</i></span>`).join('') +
+      '</div>';
+    html += `<p class="cad-note">一个气群 = 一口气能说完的单位。带 ⚠ 的是"和别的气群挤在同一个句子里"——读起来喘不过气就是这个原因。</p></div>`;
+    const aps = rep.antipatterns || [];
+    html += `<div class="cad-block"><h4>反模式 ${aps.length ? `（${aps.length} 处）` : '（未检出）'}</h4>`;
+    for (const a of aps.slice(0, 6)) html += `<div class="cad-ap"><b>${esc(a.label)}</b><span>${esc(a.evidence)}</span><em>${esc(a.hint)}</em></div>`;
+    html += '</div>';
+    if (rep.baseline_source === 'author') {
+      html += `<p class="cad-note">相对你自己的基线：历史 CV ${rep.baseline.cv}（${rep.baseline.samples} 篇）。这篇 ${s.cv}。` + '</p>';
+    } else {
+      html += `<p class="cad-note">${esc(rep.baseline?.note || '样本不足，只报绝对值、不下结论')}</p>`;
+    }
+    const sug = r.suggestions || [];
+    if (sug.length) {
+      html += `<div class="cad-block"><h4>建议 ${sug.length} 条（可拒绝、可锁定）</h4>`;
+      for (const x of sug.slice(0, 6)) html += `<div class="cad-sug"><span class="cad-tag">${esc(x.type)}</span>${esc(x.reason)}</div>`;
+      html += `<button class="btn btn-gold btn-sm" id="cadenceApply">应用拆分（只动断句，事实一字不动）</button>`;
+      html += '</div>';
+    }
+    html += `<p class="cad-note">本模块<b>不判定"是否 AI 所写"</b>：分类器对非母语者的误判率高达 61.22%，那是伤害不是功能。均匀也不等于差。</p>`;
+    out.innerHTML = html;
+    $('cadenceApply')?.addEventListener('click', async () => {
+      const btn = $('cadenceApply');
+      btn.disabled = true; btn.textContent = '应用中…';
+      try {
+        const ar = await apiPost('/api/cadence', { sessionId: sessionId || '', mode: 'apply' });
+        if (!ar.ok) { toast(ar.error); btn.disabled = false; btn.textContent = '应用拆分'; return; }
+        toast(`应用 ${ar.applied.length} 条：CV ${ar.total.cv >= 0 ? '+' : ''}${ar.total.cv}，边界错位 ${ar.total.misalignments}`);
+        if (sessionId) {
+          const d = await apiGet(`/api/draft?sessionId=${sessionId}`).catch(() => null);
+          if (d?.text) renderDraft(ar.text);
+        }
+        runCadence(); runCadence();
+      } catch (e) { toast(e.message); btn.disabled = false; btn.textContent = '应用拆分'; }
+    });
+  } catch (e) {
+    out.innerHTML = `<p class="session-sub">${esc(e.message)}</p>`;
+  }
+}
+
 /* ── 初始化 ───────────────────────────────────────── */
 /* ── 选中草稿里的一段 → 「针对这段改」 ─────────────────
    这是"AI 更好识别用户思维"的关键动作：用户不用描述"第三段第二句"，
@@ -2966,6 +3033,8 @@ $('sessionPill')?.addEventListener('click', (e) => {
   e.stopPropagation();
   openProjectMenu();
 });
+$('cadenceBtn')?.addEventListener('click', runCadence);
+$('cadenceClose')?.addEventListener('click', () => { $('cadencePanel').hidden = true; });
 $('newProjectBtn')?.addEventListener('click', startNewProject);
 $('projectMenuNew')?.addEventListener('click', startNewProject);
 $('quoteClear')?.addEventListener('click', () => {

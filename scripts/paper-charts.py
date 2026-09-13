@@ -9,7 +9,7 @@ import re
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-BASE = '~/docs/competition'
+BASE = '~/Documents/Codex/2026-08-04/bang/stylotrace/docs/competition'
 
 SAMPLES = {
     'Stylotrace 作者': (

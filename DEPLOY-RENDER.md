@@ -6,7 +6,7 @@
 ## 0. 前置：把仓库推到 GitHub
 
 ```bash
-cd ~ && git push
+cd ~/Documents/Codex/2026-08-04/bang/stylotrace && git push
 ```
 
 ## 1. 安装并登录 Render CLI（推荐，Blueprint 校验/启动）

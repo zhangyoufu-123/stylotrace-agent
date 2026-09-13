@@ -107,13 +107,14 @@ try {
   assert.ok(payload?.kind, `agent_step 应返回决策结果（kind），实际：${text.slice(0, 160)}`);
   console.log(`PASS 全新工作区首次 agent_step 即可用（kind=${payload.kind}）`);
 
-  // 4) 引用要真的被用上：模型的问题里应出现被引用的原文
-  const asked = `${payload.question || ''}${payload.recommendation || ''}`;
-  assert.ok(
-    asked.includes('门槛') || asked.includes('凹痕'),
-    `引用没被用上——模型提问里看不到被引用的原文：${asked.slice(0, 120)}`,
-  );
-  console.log('PASS 引用内容出现在模型的提问里（不是只传了参数）');
+  // 4) 带 quote 调用要能正常走通（协议层）。
+  //
+  // 注意：这里**不再断言"模型提问里出现了引用原文"**——那是在拿模型的随机行为当测试：
+  // 同一个引用，模型有时候会复述、有时候不会，测试就会随机红。
+  // "引用确实进了模型提示"由 quote-input.test.mjs 用拦截 fetch 的确定性方式证明，
+  // 那个才是真证据；这里只负责证明 MCP 这条链路不把 quote 丢掉（不报错、有结果）。
+  assert.ok(payload?.kind, '带 quote 调用必须正常返回决策结果');
+  console.log('PASS 带 quote 的 agent_step 正常返回（引用的端到端验证见 quote-input.test.mjs）');
 
   assert.ok(!stderr.trim(), `stderr 应为空：${stderr.slice(0, 200)}`);
   console.log('PASS MCP 全程无 stderr 噪声');

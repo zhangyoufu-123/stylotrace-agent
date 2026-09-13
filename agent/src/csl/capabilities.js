@@ -58,6 +58,19 @@ export const CAPABILITIES = [
     evidence: '"只改说法"结果经双色 diff 自证事实层零改动；改数字/升模态 → 拒绝结果（csl-prism 测试）',
   },
   {
+    id: 'cadence',
+    name: 'CADENCE 节奏与气群（文本节奏 + 语音韵律同一份结构）',
+    layer: '认知层',
+    entry: {
+      cli: 'stylotrace cadence "<文本>" [--ssml|--meter|--apply]',
+      web: '🔊 节奏面板',
+      api: 'POST /api/cadence',
+    },
+    status: 'live',
+    evidence:
+      '零 API 调用；把"读起来喘不过气"归因到**气群边界错位**并给可解释建议；应用拆分后 CV/边界错位机械复核（cadence-* 测试 34 项）',
+  },
+  {
     id: 'dual-diff',
     name: '双色 diff（事实层 vs 风格层）',
     layer: '验证层',

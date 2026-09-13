@@ -1437,12 +1437,14 @@ try {
       .map((l) => [JSON.parse(l).id, JSON.parse(l)]),
   );
   check('MCP initialize', byId[1]?.result?.serverInfo?.name === 'stylotrace');
-  // Phase 3：新增 4 个 csl 统一认知工具（43 → 47）
+  // Phase 3：新增 4 个 csl 统一认知工具（43 → 47）；CADENCE 新增 cadence_analyze（→ 49）
   const mcpNames = (byId[2]?.result?.tools || []).map((t) => t.name);
   check(
-    'MCP tools/list 48 个工具（含 csl_turn/csl_action/csl_checkpoint/csl_state/status_panel）',
-    byId[2]?.result?.tools?.length === 48 &&
-      ['csl_turn', 'csl_action', 'csl_checkpoint', 'csl_state', 'status_panel'].every((n) => mcpNames.includes(n)),
+    'MCP tools/list 49 个工具（含 csl_turn/csl_action/csl_checkpoint/csl_state/status_panel/cadence_analyze）',
+    byId[2]?.result?.tools?.length === 49 &&
+      ['csl_turn', 'csl_action', 'csl_checkpoint', 'csl_state', 'status_panel', 'cadence_analyze'].every((n) =>
+        mcpNames.includes(n),
+      ),
   );
   check('MCP status 调用', byId[3]?.result?.content?.[0]?.text?.includes('Stylotrace 工作区'));
   check('MCP clarify_step 返回问题', byId[4]?.result?.content?.[0]?.text?.includes('question'));

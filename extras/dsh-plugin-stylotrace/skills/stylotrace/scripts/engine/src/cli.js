@@ -308,7 +308,7 @@ const VALUE_FLAGS = new Set([
   'session', 'speech', 'srt', 'style', 'target', 'text', 'title', 'to', 'tone',
   'topic', 'train', 'type', 'use', 'want', 'words', 'workspace', 'world',
   // 引用：--quote "被引用的原文" [--quote-kind text|question]
-  'quote', 'quote-kind', 'input',
+  'quote', 'quote-kind', 'input', 'standard',
 ]);
 
 export function parseArgs(argv) {
@@ -1972,6 +1972,74 @@ export async function runCli(argv, io = {}) {
             }
             process.exitCode = 2;
           }
+        }
+        break;
+      }
+      case 'cadence': {
+        // CADENCE 节奏与声律：气群划分 / 反模式 / 呼吸建议 / 应用闭环 / 平仄 / SSML
+        const CD = await import('./cadence/index.js');
+        const src = io.input || (flags.text ? String(flags.text) : '') || positional.join(' ');
+
+        // --meter：只做声律（平仄/体式）
+        if (flags.meter) {
+          const mr = CD.metricalReport(src, { standard: String(flags.standard || 'pingshui') });
+          if (flags.json) {
+            console.log(JSON.stringify(mr, null, 2));
+            break;
+          }
+          console.log(`体式：${mr.poem_type}${mr.poem_type_reason ? `（${mr.poem_type_reason}）` : ''}`);
+          console.log(`结构分：${mr.structure_score ?? '—'}　平仄分：${mr.tonal_score ?? '（未判定，见说明）'}`);
+          for (const l of mr.lines) {
+            console.log(`  ${l.index}. ${l.text}  ${l.instance_pattern}  ${l.pattern_name || ''}`);
+          }
+          if (mr.warnings.length) console.log(`提醒：${mr.warnings.join('；')}`);
+          if (mr.unverified_chars.length) console.log(`未验证字（不猜）：${mr.unverified_chars.slice(0, 20).join(' ')}`);
+          for (const x of mr.notes) console.log(`· ${x}`);
+          break;
+        }
+
+        if (!src.trim()) {
+          throw new Error(
+            '用法: stylotrace cadence "<文本>" [--json|--ssml|--meter|--apply]\n' +
+              '  --json    输出完整报告 JSON（含气群图、反模式、建议）\n' +
+              '  --ssml    导出语音用的 SSML（气群 → 停顿/重音）\n' +
+              '  --meter   只看声律：体式 / 平仄 / 孤平三平调\n' +
+              '  --apply   应用「拆分」类建议并显示前后对比',
+          );
+        }
+        const report = CD.analyze(src, { workspace: flags.workspace || null });
+        const sug = CD.suggest(report);
+        if (flags.ssml) {
+          const s = CD.toSsml(report);
+          console.log(flags.json ? JSON.stringify(s, null, 2) : s.ssml);
+          if (s.degraded?.length) console.log(`（降级项：${s.degraded.join('；')}）`);
+          break;
+        }
+        if (flags.apply) {
+          const out = CD.apply(src, sug);
+          console.log(CD.renderRhythmReport(report));
+          console.log(`应用 ${out.applied.length} 条建议 → 新文本：\n`);
+          console.log(out.text);
+          console.log('\n合计变化：');
+          console.log(`  CV ${out.total.cv >= 0 ? '+' : ''}${out.total.cv} · 气群 ${out.total.breath_groups >= 0 ? '+' : ''}${out.total.breath_groups} · 边界错位 ${out.total.misalignments}`);
+          console.log('逐条效果（每条单独施加后的实际变化）：');
+          for (const e of out.effects.slice(0, 6)) {
+            const a = e.actual || {};
+            console.log(`  · [${e.type}] CV ${a.cv >= 0 ? '+' : ''}${a.cv ?? '—'}，边界错位 ${a.misalignments ?? '—'}`);
+          }
+          if (out.skipped.length) console.log(`  （${out.skipped.length} 条属语义改写，需交给模型后重新验证）`);
+          break;
+        }
+        if (flags.json) {
+          console.log(JSON.stringify({ report, suggestions: sug, prompt: CD.promptFor(report, sug) }, null, 2));
+          break;
+        }
+        console.log(CD.renderRhythmReport(report));
+        if (sug.length) {
+          console.log(`【建议】共 ${sug.length} 条`);
+          for (const s of sug.slice(0, 6)) console.log(`  · [${s.type}] ${s.reason}`);
+          if (sug.length > 6) console.log(`  … 还有 ${sug.length - 6} 条（--json 看全部）`);
+          console.log('  （每条都可拒绝、可锁定；改动前请自行判断是否合适）');
         }
         break;
       }

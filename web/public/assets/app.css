@@ -1933,3 +1933,31 @@ mark.frozen { background: #fff3cd; border-bottom: 2px solid #d4af37; padding: 0 
 .cap-name { font-weight: 600; }
 .cap-meta { color: #7a736a; font-size: 12px; margin-top: 2px; }
 .cap-evidence { color: #55606b; font-size: 12px; margin-top: 3px; }
+
+/* ── CADENCE 节奏面板 ── */
+.cad-stats { display: flex; gap: 18px; flex-wrap: wrap; padding: 12px 0 4px; }
+.cad-stats > div { display: flex; flex-direction: column; align-items: center; min-width: 62px; }
+.cad-stats b { font-size: 20px; color: var(--accent); line-height: 1.2; }
+.cad-stats span { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.cad-block { margin-top: 14px; }
+.cad-block h4 { margin: 0 0 8px; font-size: 13px; color: var(--ink); }
+.cad-groups { display: flex; flex-wrap: wrap; gap: 6px; }
+.cad-g {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 5px 9px; border-radius: 8px;
+  background: #f6f1e8; border: 1px solid #e8ddcc;
+  font-size: 13px; line-height: 1.5;
+}
+.cad-g.is-split { background: #fdf0e6; border-color: #e9c6ad; }
+.cad-g.is-split::after { content: '⚠'; margin-left: 2px; font-size: 11px; color: #c05b2d; }
+.cad-g i { font-style: normal; font-size: 10px; color: var(--muted); }
+.cad-note { margin: 8px 0 0; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.cad-ap { padding: 8px 0; border-bottom: 1px dashed #efe6d8; }
+.cad-ap b { display: block; font-size: 13px; }
+.cad-ap span { display: block; font-size: 12px; color: var(--muted); margin: 2px 0; }
+.cad-ap em { display: block; font-size: 12px; font-style: normal; color: #8a6a4a; }
+.cad-sug { padding: 7px 0; font-size: 13px; line-height: 1.7; }
+.cad-tag {
+  display: inline-block; margin-right: 6px; padding: 1px 7px;
+  border-radius: 999px; background: var(--accent-soft); color: #9c4b24; font-size: 11px;
+}

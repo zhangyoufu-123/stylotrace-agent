@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 仓库 | `~/stylotrace`（私有；origin = zhangyoufu-123/stylotrace，main） |
+| 仓库 | `~/Documents/stylotrace`（私有；origin = zhangyoufu-123/stylotrace，main） |
 | 基线提交 | `524724e` feat(csl): P0 集成闭环——Canonical State 版本化双写/反事实 Credit/真实 Outcome/Director 认知主门/Writer Core Idea 门 |
 | 工作区 | 干净（仅 2 个未跟踪用户文件：`PROJECT.md`、`CSLA_IMPLEMENTATION_READINESS_REPORT.md`，不属于仓库交付物） |
 | Node | v24.15.0 · npm 11.12.1 |

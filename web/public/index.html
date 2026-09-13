@@ -176,6 +176,7 @@
           <button class="btn btn-ghost" id="cslFalsifyBtn" title="可证伪演示：系统主动攻击自己，看违规是否真被拦住">自证 12 项</button>
           <button class="btn btn-ghost" id="cslPrismBtn" title="棱镜三视图：原文 / 事实层 / 风格层，可就地只改说法">🔺 棱镜</button>
           <button class="btn btn-ghost" id="cslPanelBtn" title="状态面板：这个 agent 记住了什么（认知/风格/作品/决断）">📋 状态面板</button>
+          <button class="btn btn-ghost" id="cadenceBtn" title="CADENCE 节奏与气群：找出「一个句子里塞了两个气群」的地方，给可解释的断句建议">🔊 节奏</button>
         </div>
 
         <!-- 决断卡（创新保护）：把作者自己的句子冻结，AI 只能在其周围扩展 -->
@@ -196,6 +197,17 @@
             </div>
           </div>
           <div class="decision-list" id="decisionList"></div>
+        </div>
+
+
+        <!-- CADENCE 节奏与气群：与棱镜同一层，零 API 调用 -->
+        <div class="prism-panel" id="cadencePanel" hidden>
+          <div class="prism-head">
+            <span class="prism-title">🔊 CADENCE 节奏与气群</span>
+            <span class="prism-hint">把"读起来喘不过气"变成可解释的结构：<b>气群</b>（一口气能说完的单位）</span>
+            <button class="btn btn-ghost" id="cadenceClose">收起</button>
+          </div>
+          <div class="prism-result" id="cadenceResult"></div>
         </div>
 
         <!-- 棱镜三视图：原文 / 事实层 / 风格层，可就地"只改说法"（事实锁定） -->

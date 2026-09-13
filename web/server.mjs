@@ -774,6 +774,45 @@ async function handleRequest(req, res, url) {
     );
     return json(res, 200, D.dualDiff(String(b.before || ''), String(b.after || '')));
   }
+  // ── CADENCE 节奏与气群：零 API 调用，可以随便点 ──
+  if (req.method === 'POST' && p === '/api/cadence') {
+    const b = await body(req);
+    const CD = await import(
+      pathToFileURL(path.resolve(HERE, '..', 'agent', 'src', 'cadence', 'index.js')).href
+    );
+    const sid = String(b.sessionId || '');
+    let text = String(b.text || '');
+    // 不传 text 就分析当前成稿——多数人想看的就是自己正在写的东西
+    if (!text && sid) {
+      const f = path.join(sessionDir(sid), 'draft.md');
+      try {
+        text = fs.readFileSync(f, 'utf8');
+      } catch {}
+    }
+    if (!text.trim()) return json(res, 200, { ok: false, error: '没有可分析的文本（先写点东西，或把文本传进来）' });
+    const mode = String(b.mode || 'report');
+    try {
+      if (mode === 'meter') {
+        return json(res, 200, { ok: true, meter: CD.metricalReport(text, { standard: String(b.standard || 'pingshui') }) });
+      }
+      const report = CD.analyze(text, { workspace: sid ? sessionDir(sid) : null });
+      if (mode === 'ssml') return json(res, 200, { ok: true, ssml: CD.toSsml(report) });
+      const suggestions = CD.suggest(report, { lockedSpans: b.lockedSpans || [] });
+      if (mode === 'apply') {
+        const out = CD.apply(text, suggestions);
+        return json(res, 200, { ok: true, text: out.text, applied: out.applied, skipped: out.skipped, total: out.total, effects: out.effects, report: out.report });
+      }
+      return json(res, 200, {
+        ok: true,
+        report,
+        suggestions,
+        prompt: CD.promptFor(report, suggestions),
+        text: String(text).slice(0, 200),
+      });
+    } catch (e) {
+      return json(res, 200, { ok: false, error: String(e?.message || e).slice(0, 200) });
+    }
+  }
   // ── 棱镜三视图：原文 / 事实层 / 风格层；restyle = 只改说法（事实层锁定）──
   if (req.method === 'POST' && p === '/api/csl/prism') {
     const b = await body(req);

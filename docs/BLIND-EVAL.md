@@ -6,7 +6,7 @@
 ## 第 1 步：生成盲评对（本地，一次）
 
 ```bash
-cd ~/agent
+cd ~/Documents/Codex/2026-08-04/bang/stylotrace/agent
 node bin/stylotrace.js experiment run \
   --topic "写一篇关于夏天离别的散文" \
   --genre 散文 \

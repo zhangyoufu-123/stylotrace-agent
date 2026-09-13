@@ -14,7 +14,7 @@ import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-BASE = '~/docs/competition'
+BASE = '~/Documents/Codex/2026-08-04/bang/stylotrace/docs/competition'
 
 # ── 样本（匿名真人写作样本 ×2 + 真人模拟样本 ×3 + 通用模型 ×2 + 模板）──
 SAMPLES = {

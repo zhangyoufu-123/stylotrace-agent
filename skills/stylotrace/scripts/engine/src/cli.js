@@ -305,7 +305,7 @@ const VALUE_FLAGS = new Set([
   'dir', 'direction', 'docx', 'engine', 'export', 'fear', 'file', 'format',
   'genre', 'hosts', 'html', 'lang', 'latex', 'md', 'memory', 'model', 'mood',
   'mode', 'note', 'out', 'pdf', 'project', 'provider', 'refresh', 'scene', 'secret', 'section',
-  'session', 'speech', 'srt', 'style', 'target', 'text', 'title', 'to', 'tone',
+  'session', 'source', 'speech', 'srt', 'style', 'target', 'text', 'title', 'to', 'tone',
   'topic', 'train', 'type', 'use', 'want', 'words', 'workspace', 'world',
   // 引用：--quote "被引用的原文" [--quote-kind text|question]
   'quote', 'quote-kind', 'input', 'standard',
@@ -318,7 +318,11 @@ export function parseArgs(argv) {
     const a = argv[i];
     if (a.startsWith('--')) {
       const key = a.slice(2);
-      const consumes = VALUE_FLAGS.has(key) && i + 1 < argv.length && !argv[i + 1].startsWith('--');
+      // 只有"长得像 flag"的下一个 token（-- 后紧跟字母）才不算取值：
+      // 否则 `--text "---\n前言…"` 这类以 -- 开头的正文会被误判成 flag，
+      // flags.text 变成布尔 true，正文被静默写成字符串 "true"。
+      const looksLikeFlag = (s) => /^--[A-Za-z]/.test(s);
+      const consumes = VALUE_FLAGS.has(key) && i + 1 < argv.length && !looksLikeFlag(argv[i + 1]);
       if (consumes) {
         flags[key] = argv[i + 1];
         i += 1;
@@ -1577,8 +1581,11 @@ export async function runCli(argv, io = {}) {
       }
       case 'absorb-sample': {
         // 用法: stylotrace absorb-sample "文段" [--author 鲁迅] [--source 出处] [--note 备注] [工作区]
-        const text = flags.text || positional[0] || '';
-        if (!text) throw new Error('用法: stylotrace absorb-sample "文段" [--author 作者] [--source 出处] [工作区]');
+        // 只认字符串：`--text` 后面跟了像 flag 的 token 时它是布尔 true，
+        // 落到磁盘会把样本正文写成 "true"（静默损坏），这里一律当缺参处理。
+        const text = typeof flags.text === 'string' ? flags.text : positional[0] || '';
+        if (typeof text !== 'string' || !text.trim())
+          throw new Error('用法: stylotrace absorb-sample "文段" [--author 作者] [--source 出处] [--note 备注] [工作区]');
         const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || positional[1] || ''), { create: true });
         const file = ws.absorbSample(w, text, { author: flags.author || '', source: flags.source || '', note: flags.note || '' });
         console.log(`已吸收文段进风格样本 → ${file}`);

@@ -1,0 +1,42 @@
+.DS_Store
+node_modules/
+.stylotrace/
+.codex/
+web-data/
+web-data-demo/
+api-data/
+*.bak.*
+.env.local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+.netrc
+draft.docx
+draft.pdf
+draft.srt
+draft.html
+draft-*.docx
+stylotrace-profile.json
+*.log
+
+__pycache__/
+*.pyc
+
+# 论文与竞赛材料：仅在**私有**仓库内保存（作者本人成果）。
+# ⚠️ 若本仓库转为公开，论文、实验数据与全部竞赛材料会一并公开 ——
+# 转公开前，先把下面这行注释掉、恢复成排除状态，否则会一起公开。
+# docs/competition/
+docs/competition/PROCESS.md
+docs/competition/COMPETITION.md
+docs/competition/BEYOND-PLAN.md
+docs/competition/PRODUCT-README.md
+docs/competition/RESEARCH-PAPER.md
+docs/competition/查新报告.md
+docs/legacy/
+docs/experiments/
+
+# 插件构建产物(发布时由 npm pack 重新生成)
+extras/dsh-plugin-stylotrace/*.tgz

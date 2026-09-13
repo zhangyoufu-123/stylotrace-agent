@@ -1,0 +1,2003 @@
+#!/usr/bin/env node
+// Stylotrace Agent CLI 入口。
+import fs from 'node:fs';
+import path from 'node:path';
+import readline from 'node:readline';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { loadConfig } from './config.js';
+import { chat, makeLlm } from './llm.js';
+import * as ws from './workspace.js';
+import * as cslRuntime from './csl/runtime.js';
+import * as cslAdapter from './csl/adapter.js';
+import { clarifyOnce, clarifyInteractive } from './clarify.js';
+import { generateOutline } from './outline.js';
+import { writeSection } from './write.js';
+import { redteam, audit, diagnoseText } from './redteam.js';
+import { dissect } from './dissect.js';
+import { runMcpServer } from './mcp.js';
+import { runSetup } from './setup.js';
+import { pointEdit, rewriteVariants } from './point-edit.js';
+import { extractInstruction } from './point-edit.js';
+import { parseQuoteArg } from './point-edit.js';
+import { probeTask, probeTaskLLM } from './observer.js';
+import { interviewStep, interviewInteractive, interviewSummary } from './interview.js';
+import { runAudience, renderAudience, runDebate, renderDebate } from './reader-gallery.js';
+import { styleProgress, backfillFromContext, extractStyleFromSamples } from './style.js';
+import { renderStyleProfile } from './style.js';
+import { implicitSignalLog } from './style.js';
+import { buildStyleShot } from './style-memory.js';
+import { restyle } from './restyle.js';
+import { runHook } from './hook.js';
+import { renderChecklist } from './interview.js';
+import { agentStep, agentInteractive } from './director.js';
+import { canPrompt } from './tty.js';
+import { readGovernance, updateGovernance, governanceBrief } from './governance.js';
+import { listLibrary, viewCategory, addPiece, distillAll } from './library.js';
+import {
+  listEntries,
+  addEntry,
+  removeEntry,
+  matchKb,
+  matchKbHybrid,
+  normTitle,
+  recommendReadings,
+  exportKnowledge,
+  importKnowledge,
+} from './knowledge.js';
+import { academicNarrative, argumentScan, academicGap } from './academic.js';
+import {
+  listCharacters,
+  loadCharacter,
+  saveCharacter,
+  removeCharacter,
+  simulateCharacter,
+} from './character.js';
+import {
+  extractInput,
+  fetchUrlInput,
+  isUrl,
+  exportDocx,
+  exportOfficialDocx,
+  exportAcademicDocx,
+  exportLatex,
+  exportHtml,
+  exportSrt,
+  exportPdf,
+  pdfAvailable,
+  docxAvailable,
+  detectWhisper,
+  transcribeAudio,
+} from './io.js';
+import {
+  formatReferences,
+  parseEntries,
+  readEntriesFile,
+  citationStyles,
+  extractCitations,
+} from './citation.js';
+import { GENRES, genreBrief, genreNames } from './genre.js';
+import { evaluateStyleFidelity, applyEvalFeedback, renderStyleEval } from './style-eval.js';
+import { reviewOutline, renderOutlineReview } from './outline-review.js';
+import {
+  adapterStatus,
+  buildStyleDataset,
+  distillStyleAdapter,
+  loadStyleAdapter,
+  submitFineTune,
+} from './style-adapter.js';
+import { modulatorStatus, forceRetrain, weightsFile } from './modulator.js';
+import { extractAuthorSheet, readAuthorSheet, sheetFile, FIVE_QUESTIONS } from './author-sheet.js';
+import { blindStatsReport, parseBlindCsv } from './stats.js';
+import { factCheck, renderFactCheck } from './fact-check.js';
+import { recentPulses, renderPulse } from './style-pulse.js';
+import { rhythmCurve, renderRhythmCurve } from './style-pulse.js';
+import { vectorSummary, renderVectorSummary, refreshStyleVector } from './style-vector.js';
+import { checkConsistency, renderConsistency } from './consistency.js';
+import { diagnoseFakeThinking, renderFakeThinking } from './fake-thinking.js';
+import { proofread, proofScan, renderProofread } from './proofread.js';
+import { academicNorm, renderNormReport } from './academic-norm.js';
+import { docTranslate, docRestyle, renderDocReport } from './doc-pipeline.js';
+import { transform, PRESETS } from './transform.js';
+import { listHistory, rollback } from './history.js';
+import { exportProfile, importProfile, profileStatus } from './profile.js';
+import {
+  buildSearchQueries,
+  searchOnline,
+  ingestSearchResults,
+  ingestAssetResults,
+  requestHostSearch,
+  pendingDataNeeds,
+  ragStatus,
+} from './rag.js';
+import { buildPersona, personaStatus, personaBrief, personaToVector } from './persona.js';
+import { listBibles, readBible, saveBible, distillBible } from './bible.js';
+import { emotionCurve, renderEmotionCurve } from './revise.js';
+import {
+  humanMetrics,
+  renderHumanMetrics,
+  collectAuthorCorpus,
+  corpusStats,
+  runPairExperiment,
+  runAblation,
+  userSurveyTemplate,
+  renderBlindSurvey,
+  summarizeResults,
+} from './experiment.js';
+import { originalityScan } from './originality.js';
+import { roundtripCheck, renderRoundtrip } from './roundtrip.js';
+import {
+  discoverCredentials,
+  describeCandidate,
+  redact,
+  saveCredentials,
+  clearCredentials,
+  credentialsFile,
+} from './credentials.js';
+import { runReview, renderReview } from './review.js';
+import { synthesize, SYNTHESIZE_RENDER } from './synthesize.js';
+import { polishLoop, POLISH_RENDER } from './polish.js';
+import { listPresets, viewPreset, PRESET_LIST_RENDER, PRESET_VIEW_RENDER } from './preset.js';
+
+const HELP = `Stylotrace Agent v0.23 — 完整写作 Agent（导演模式 · 四层复合风格向量 · 个人知识库 · 多 Agent 协作 · 多模态）
+
+用法:
+  stylotrace init [目录]                初始化工作区（默认 ./.stylotrace）
+  stylotrace agent [工作区]             导演模式：我主导全程（澄清→大纲→写作→审计→群像→交付）
+  stylotrace agent --once [工作区]      导演单步：应用 stdin 的回答，返回下一步决策 JSON
+      可选 --quote "原文" [--quote-kind text|question]
+                                        带上引用：这段是在回答哪个问题 / 要改哪一段
+  stylotrace clarify [工作区]           交互澄清（一次一问）
+  stylotrace clarify --once [工作区]    单步澄清：应用 stdin 的回答，输出下一个问题
+  stylotrace interview [工作区]         需求访谈：多轮一问 + 实时确认清单 + 进度
+  stylotrace interview --once [工作区]  单步访谈：应用 stdin 回答，输出问题+清单+进度
+  stylotrace interview --summary [工作区]  打包需求确认清单与剩余步骤（不消耗 LLM）
+  stylotrace outline [工作区]           生成大纲（素材门槛未过会报错）
+  stylotrace write [工作区]             按大纲逐节写作到 draft.md（--force 强制重写）
+  stylotrace write --section N [工作区] 只写第 N 节
+  stylotrace restyle [--direction 方向] [--section N] [--force] [工作区]
+                                     按新风格方向重写整篇（或指定节）；缺省用档案最近一条方向
+  stylotrace transform <预设> [--target N] [--tone x] [--section N] [--force] [工作区]
+                                     一键改写矩阵：expand 扩写 / condense 缩写 / continue 续写 /
+                                     polish 润色 / imitate 仿写 / tone:formal|casual|warm|authoritative 改语气
+  stylotrace history [工作区]           版本快照列表（write/restyle/redteam-fix/transform 前自动生成）
+  stylotrace rollback [N] [工作区]      回滚到第 N 份快照（1=最新；回滚前先存当前版本）
+  stylotrace profile export [--to file] [工作区]  导出全局风格档案（默认 STYLOTRACE_HOME 或工作区 vault）
+  stylotrace profile import <file> [工作区]  导入合并风格档案（本地高置信维度不被动覆盖）
+  stylotrace redteam [--fix] [工作区]   反 AI 审计（可选 LLM 修订）
+  stylotrace redteam --file x.md        直接审计任意文件
+  stylotrace redteam --proofread [工作区]  反 AI 审计 + 确定性校对
+  stylotrace style-eval [--file x.md] [工作区]  深度全稿风格保真评估（对照旧稿/修改记录打分；默认不自动跑，需要时手动）
+  stylotrace outline-review [工作区]    大纲评审：评审当前大纲（低分时自动给出修订版，仍需你确认）
+  stylotrace audience [--file x.md] [--quick] [工作区]  读者群像：8 个"第一读者"的感性反馈
+  stylotrace debate [--file x.md] [--quick] [工作区]    读者交锋：分歧最大的 3 位读者互看意见后收敛出共识/争议/优先级
+  stylotrace dissect [--file x.md] [工作区]  感性解剖 5 维度
+  stylotrace fact-check [--file x.md] [工作区]  事实核查：数字/年代/引文/人名/机构 → material/common/verify 分级
+  stylotrace proofread [--file x.md] [工作区]   校对纠错：错别字/叠字/标点（确定性）+ 语病（LLM，可选）
+  stylotrace norm [--file x.md] [工作区]   学术规范审计：标点混用/口语化/摘要长度/引用顺序/关键词（确定性 + LLM 深审，只报告不改稿）
+  stylotrace doc translate <文件> [--lang en] [--out out] [工作区]
+                                     文档翻译：docx/md/txt → 原意解读 + 结构保留翻译 → md/docx/html 导出（附回译校验）
+  stylotrace doc restyle <文件> [--style 旧稿|方向] [--out out] [工作区]
+                                     文档风格重写：把成品文档按作者风格重写 → md/docx/html 导出
+  stylotrace quote "<原句>"             生成可粘贴的「Stylotrace 引用」块
+  stylotrace synthesize [--project 目录] [--target report|product|review|readme|blog|article] [--format md|docx|html|both] [工作区]
+                                      项目/上下文自动提炼写作：从项目与对话上下文提炼作者想表达的内容，
+                                      生成实验报告/产品介绍/技术综述/README/技术博客——无需逐项交代要求
+  stylotrace polish [--rounds 3] [--threshold 60] [--force] [工作区]
+                                      质量自动循环：审计 draft 的人类化指数+红队，不达标按你的风格
+                                      自动人性化重写并复检，最多 N 轮——分数说了算，循环自动收敛
+  stylotrace preset list|view <id>    内置名家风格预设：鲁迅/老舍/朱自清/徐志摩/郁达夫/史铁生
+                                      开箱即用；restyle --direction "学鲁迅" 即可按名家风格改写
+  stylotrace hook <工作区> [payload]    宿主生命周期钩子 → 观察日志 + 压缩守卫
+  stylotrace checklist <工作区>         渲染需求访谈确认清单（不消耗 LLM）
+  stylotrace style [--memory 查询] [--export] [--backfill] [--extract] [工作区]
+                                     风格档案进度；--memory 预览按论题检索到的旧稿与修改对；--export 导出人类可读档案（vault/style-profile.md）；--backfill 回填对话日志；--extract 提取风格底稿
+  stylotrace style --pulses [工作区]    风格脉搏：查看澄清/大纲/每节写作/修改建议的即时评估记录
+  stylotrace style --signals [工作区]   隐式风格信号流水：每轮对话被动采集到的风格证据
+  stylotrace curve [--file x.md] [工作区]  节奏曲线：每节 张力/信息密度/情绪强度/节奏变化 → vault/curve.md
+  stylotrace consistency [--file x.md] [工作区]  伏笔回收校验：跨章检查已记伏笔是否回收 → vault/consistency.md
+  stylotrace diagnose [--file x.md] [工作区]  假思考细读：LLM 六层细读（声音/过渡/修辞/引用/翻译体/收尾）
+                                      + RAG 作者对照；无密钥时确定性兜底
+  stylotrace style-vector [--refresh] [工作区]  四层复合风格向量：连续向量(EMA) + 动态维度 + 困惑度签名 + 偏好对；--refresh 立即从档案重算
+  stylotrace style-adapter [--distill] [--dataset [out.jsonl]] [--lora] [工作区]
+                                     风格持续微调：--distill 蒸馏风格适配卡（最高优先级注入）；--dataset 生成偏好对 JSONL；--lora 提交微调（未配置端点时给出本地 LoRA 指引）
+  stylotrace modulator [--train] [--export] [工作区]
+                                     外层调制器：把签名升级为可学习模型——编辑对偏好学习十维权重，推理时调制候选评分；--train 强制重训；--export 输出权重文件路径
+  stylotrace author-sheet [--refresh] [工作区]
+                                     作者写作清单（L3 深层风格读取）：五问（主张/论证/读者/红线/触发）自动归纳，红线强制保留；--refresh 强制重算
+  stylotrace genre [名称]               文体库：结构骨架 + 行文规范（公文/合同/通知/纪要/报告/议论文/散文/演讲稿/记叙文）
+  stylotrace library [工作区]           个人写作库：查看分类作品与蒸馏 skill
+  stylotrace library scan [工作区]      蒸馏每类作品的"个人写作 skill"（vault/skills/personal/）
+  stylotrace library view <类别> [工作区]  查看某类的蒸馏 skill 与作品清单
+  stylotrace library add <file> [--category 类别] [--session 标识] [工作区]  归档一篇作品（自动分类）
+  stylotrace knowledge [工作区]           个人知识库：查看读过的书/去过的地方/自己的构想
+  stylotrace knowledge list|search <关键词>|view <标题或id>|add <标题>|remove <标题或id> [工作区]
+                                     列表/检索/查看/收录/移除个人知识（澄清中《书名》与"去过×"
+                                     会自动归纳收录，只问一次、可随时在此管理）
+  stylotrace knowledge export [--to file] [工作区]  导出个人知识库 bundle（可迁移到其他项目）
+  stylotrace knowledge import <file> [工作区]       导入合并知识库（按标题去重；含个人阅读/经历，注意保管）
+  stylotrace recommend [工作区]        荐书联想：从思想库匹配与你主题相近的书/理论，说明为什么可用
+  stylotrace bible list|view <标题>|save <标题>|distill [工作区]
+                                     文章圣经：长文/系列文的跨篇一致性文档（交付自动沉淀）
+  stylotrace emotion [--file x.md] [工作区]  情绪曲线量化（按节输出强度与主导情绪，供节奏检查）
+  stylotrace experiment metrics <file>        人类化指标：句长标准差/段落变异/TTR/困惑度签名等
+  stylotrace experiment collect [工作区] [--out file]  采集作者语料包（旧稿/修改/话语/向量/知识）
+  stylotrace experiment run --topic "题目" [--genre 散文] [--words 800] [--authors "名=文件;名2=文件2"] [工作区]
+                                     对照实验：每位作者跑 baseline vs 风格注入 variant，
+                                     输出指标对比 + 随机顺序盲评对（vault/experiments/）
+  stylotrace experiment ablation --topic "题目" --author <样本文件> [工作区]  消融实验（逐模块关闭）
+  stylotrace experiment survey [--out file]  生成盲评 + 用户体验问卷模板
+  stylotrace experiment blind <run目录> [--out file]  把盲评对导出成一页问卷（可直接分发）
+  stylotrace experiment summarize <run目录> [--answers answers.json]
+                                     汇总论文表格：客观指标 + 盲评选择率 + 二项检验
+  stylotrace academic [工作区]         学术论证链：known→gap→tension→insight→method→evidence→limitation
+                                     + 成稿论证完备性扫描（claim/evidence/warrant/limitation）
+  stylotrace persona [--refresh] [工作区]  人物风格肖像：从知识库/旧作/修改记录侧写你的写作人格
+                                     （vault/persona.md 可查询）；--refresh 重新生成并映射回风格向量
+  stylotrace character list|add|view|remove|simulate <名字> [--scene 场景] [工作区]
+                                     小说角色档案与预演：add 建档案（--want/--fear/--secret/--speech），
+                                     simulate 让角色按档案预测情绪/言语/行为，供写作注入
+  stylotrace ingest <file...> [工作区]  多模态输入：docx/xlsx/图片/md → 提取成素材
+  stylotrace dictate <音频...> [--to-draft] [工作区]  语音口述：whisper 转录 → 素材；--to-draft 生成口述草稿
+  stylotrace export [--docx out.docx] [--md out.md] [工作区]  把 draft.md 导出为 docx/md
+  stylotrace export --official [--redhead] [--docx out.docx] [工作区]  按 GB/T 9704-2012 公文排版导出 docx
+  stylotrace export --academic [--docx out.docx] [工作区]  按学术论文排版导出 docx（宋体小四/黑体标题）
+  stylotrace export --html out.html / --srt out.srt / --pdf out.pdf [工作区]  导出 HTML / 字幕 SRT / PDF
+  stylotrace export --latex out.tex [工作区]  导出 LaTeX 论文（数学公式等特殊格式原样保留）
+  stylotrace cite "<json条目或数组>" [--style gbt7714|apa] [--file refs.json]  生成参考文献（期刊/图书/网页/报纸/论文/报告）
+  stylotrace citations [--file x.md] [--append refs.json] [--auto] [工作区]  提取文中《引文》清单；--append 追加参考文献到草稿；--auto 从检索回灌来源生成参考文献草稿
+  stylotrace rag [status|search|ingest|ingest-assets|needs] [工作区]  联网检索：search 生成查询并直连/排队宿主代检；ingest <results.json> 回灌缓存与素材；ingest-assets 回灌联网资产/思想（书目自动入知识库）；needs 查看待办资料请求
+  stylotrace originality [--file x.md] [工作区]   原创性检查：文内重复句/与个人库自我复用/模板句（内置质量门，交付前自动执行）
+  stylotrace review [--fix] [--quick] [--file x.md] [工作区]  深度审阅：红队+校对+事实+原创+风格保真+读者交锋 → P0/P1/P2；--fix 一键修复 P0
+  stylotrace absorb <工作区> <edit.json>   吸收定点修改进风格档案
+  stylotrace fingerprint <工作区>       刷新压缩守卫风格指纹
+  stylotrace panel [state.json]         渲染玻璃面板
+  stylotrace status [工作区]            工作区摘要
+  stylotrace governance [--intent 长期意图] [--focus 当前聚焦] [工作区]
+                                     查看/编辑输入治理面：长期写作身份 + 近期聚焦，回灌到导演决策与写改红队
+  stylotrace doctor [--ping]            自检（可选连通性测试）
+  stylotrace credentials [--ask] [--use N] [--clear] [工作区]
+                                     凭据发现：自动读取 Codex/Claude/OpenCode/env 已配置的 API；
+                                     --use N 采用候选；--ask 交互选择或手动输入；--clear 清除工作区凭据
+  stylotrace mcp                       启动 MCP stdio 服务器（供 Codex/Claude Code/OpenCode 调用）
+  stylotrace setup [--dry-run] [--dir 项目] [--engine 引擎路径] [--hosts codex,claude,opencode]
+                                     自动接入：检测宿主→原生注册→装 skill→复用本机凭据
+  stylotrace point-edit "<引用/原文>" "<修改指令>" [--dir 项目] [--file 文件]
+                                     深度定点修改：只改选中的那一处，吸收进风格档案
+  stylotrace rewrite "<引用/原文>" "<修改指令>" [--dir 项目] [--file 文件]
+                                     候选改写：生成 3 个不同方向的候选（不落盘），
+                                     选定后用 point-edit --replacement 应用
+  stylotrace roundtrip [<文本|文件>] [--file x.md] [工作区]
+                                     翻译/回译校验：中译英→回译，信息点核对 + 风格对比
+  stylotrace probe "<任务描述>"         生态位探测：该不该让 Stylotrace 主动介入
+  stylotrace csl "<输入>" [--workspace 工作区] [--session 会话] [--answer "…"] [--deep]
+  stylotrace falsify [--json]                可证伪演示：系统主动攻击自己（写作门/冻结保护/
+                                    反锁死/事实层锁定），看违规是否真的被拦住
+  stylotrace prism "<文本>" [--restyle] [--direction "更克制"] [--json]
+                                    棱镜三视图：原文 / 事实层（说了什么）/ 风格层（怎么说的）；
+                                    --restyle 只改说法，事实层被改动则拒绝结果
+  stylotrace capabilities [--workspace 工作区] [--session 会话] [--json]
+                                    功能全景：列出所有真实可用能力（澄清/提问策略/写作门/决断卡/
+                                    棱镜/双色diff/自证/反锁死/记忆/检索/归因/审计），含入口与证据
+                                     [--interactive] [--debug] [--provider 提供商] [--model 模型] [--json]
+                                     CSLA 认知运行时（真实 LLM）：Fast/Deep 门控 + 动作循环 + Authority；
+                                     --answer 回答追问后重跑进深层；--interactive 人机多轮；
+                                     --debug 显示 mode/score/action/tokens/latency/state 版本
+
+环境变量（可选，默认指向 DeepSeek）:
+  STYLOTRACE_LLM_BASE_URL  STYLOTRACE_LLM_API_KEY  STYLOTRACE_LLM_MODEL
+  STYLOTRACE_LLM_MAX_TOKENS  STYLOTRACE_LLM_TIMEOUT_MS  STYLOTRACE_WORKSPACE
+  STYLOTRACE_QUICK=1          快速模式：读者 3 人、跳过交锋与适配卡重蒸馏（交付更快）
+  STYLOTRACE_RAG_ENDPOINT/STYLOTRACE_RAG_API_KEY  直连检索端点（POST /search {queries}）；不配置则走宿主代检（requests.jsonl）
+  STYLOTRACE_EMBED_BASE_URL/STYLOTRACE_EMBED_API_KEY/STYLOTRACE_EMBED_MODEL  风格向量升级为真实 embedding（OpenAI 兼容 /embeddings）；不配置则用稀疏字符二元组
+  STYLOTRACE_PERPLEXITY_ENDPOINT  困惑度签名真实端点（POST {text} → {perplexity}）；不配置则用确定性代理
+  STYLOTRACE_STYLE_EMA  风格向量 EMA 系数（默认 0.75：越大越稳、越小越跟手）
+  STYLOTRACE_BASELINE_TEXT  通用语料文件路径；配置后连续向量输出"作者−基线"偏离方向
+  STYLOTRACE_CREDENTIALS=auto|ask|off  凭据发现模式：auto 自动采用宿主最佳候选（默认）/ ask 交互 / off 只用显式配置
+`;
+
+// 取值 flag 白名单：只有这些 flag 才消费紧随的下一个参数。
+// 其余 flag（布尔开关）永不吞参数——否则 `style --signals /tmp/ws` 会把
+// `/tmp/ws` 误当成 --signals 的值吃掉，导致工作区静默丢失。
+// 可选值 flag（export/refresh/train：可布尔可带值）保留在取值侧，
+// 这类命令的工作区请用 --workspace 显式指定。
+const VALUE_FLAGS = new Set([
+  'answers', 'answer', 'append', 'author', 'authors', 'background', 'category', 'dataset',
+  'dir', 'direction', 'docx', 'engine', 'export', 'fear', 'file', 'format',
+  'genre', 'hosts', 'html', 'lang', 'latex', 'md', 'memory', 'model', 'mood',
+  'mode', 'note', 'out', 'pdf', 'project', 'provider', 'refresh', 'scene', 'secret', 'section',
+  'session', 'speech', 'srt', 'style', 'target', 'text', 'title', 'to', 'tone',
+  'topic', 'train', 'type', 'use', 'want', 'words', 'workspace', 'world',
+  // 引用：--quote "被引用的原文" [--quote-kind text|question]
+  'quote', 'quote-kind', 'input',
+]);
+
+export function parseArgs(argv) {
+  const flags = {};
+  const positional = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) {
+      const key = a.slice(2);
+      const consumes = VALUE_FLAGS.has(key) && i + 1 < argv.length && !argv[i + 1].startsWith('--');
+      if (consumes) {
+        flags[key] = argv[i + 1];
+        i += 1;
+      } else {
+        flags[key] = true;
+      }
+    } else positional.push(a);
+  }
+  return { flags, positional };
+}
+
+function printError(err) {
+  if (process.env.STYLOTRACE_DEBUG) console.error(err.stack || String(err));
+  else console.error(`[stylotrace] ${err.message}`);
+  process.exitCode = 1;
+}
+
+async function doctor(cfg, { ping = false } = {}) {
+  const report = [];
+  report.push(
+    `Node: ${process.version} ${Number(process.versions.node.split('.')[0]) >= 18 ? '✓' : '✗（需要 ≥18）'}`,
+  );
+  report.push(
+    `LLM 端点: ${cfg.baseUrl}（模型 ${cfg.model}）${cfg.apiKey ? '✓ 已配置密钥' : '⚠ 未配置密钥（可用 mock 或本地服务）'}`,
+  );
+  report.push(
+    `凭据来源: ${cfg.credentialsSource ? `${cfg.credentialsSource}（自动发现，密钥已脱敏）` : cfg.apiKey ? '显式 STYLOTRACE_LLM_API_KEY' : '（未配置，可用 stylotrace credentials --ask 选择或输入）'}`,
+  );
+  report.push(
+    `神经风格编码: ${
+      cfg.embedBaseUrl && cfg.embedApiKey && cfg.embedModel
+        ? `✓ 已配置（${cfg.embedModel}）`
+        : '⚠ 未配置（可选：设置 STYLOTRACE_EMBED_BASE_URL/API_KEY/MODEL，未配置自动降级统计特征）'
+    }`,
+  );
+  const w = ws.resolveWorkspace(cfg, '');
+  report.push(`工作区: ${w} ${fs.existsSync(w) ? '✓' : '（未初始化）'}`);
+  if (fs.existsSync(`${w}/vault/write-style.json`)) {
+    report.push(
+      `风格档案: write ${ws.styleDimSummary(`${w}/vault/write-style.json`)} · read ${ws.styleDimSummary(`${w}/vault/read-style.json`)}`,
+    );
+  }
+  if (fs.existsSync(w)) {
+    const mod = modulatorStatus(w);
+    report.push(
+      `外层调制器: ${mod.mode === 'learned' ? `✓ 学习权重（${mod.pairs} 个编辑对）` : '⚠ 经验默认权重（编辑对 <2）'}`,
+    );
+    report.push(
+      `作者写作清单: ${fs.existsSync(sheetFile(w)) ? '✓ 已归纳' : '⚠ 未生成（澄清后自动归纳）'}`,
+    );
+  }
+  if (ping) {
+    try {
+      const r = await chat(cfg, [{ role: 'user', content: 'ping' }], {
+        maxTokens: 16,
+        temperature: 0,
+      });
+      report.push(`LLM 连通: ✓（${r.trim().slice(0, 40)}）`);
+    } catch (err) {
+      report.push(`LLM 连通: ✗ ${err.message.slice(0, 120)}`);
+      process.exitCode = 1;
+    }
+  }
+  console.log(report.join('\n'));
+}
+
+export async function runCli(argv, io = {}) {
+  const [cmd, ...rest] = argv;
+  if (!cmd || cmd === '--help' || cmd === '-h' || cmd === 'help') {
+    console.log(HELP);
+    return;
+  }
+  const cfg = loadConfig();
+  const { flags, positional } = parseArgs(rest);
+  const workspace = flags.workspace || positional[0] || '';
+
+  try {
+    switch (cmd) {
+      case 'init': {
+        const dir = flags.dir || positional[0] || '';
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, dir), {
+          create: true,
+        });
+        console.log(`Stylotrace 工作区已初始化 → ${w}`);
+        break;
+      }
+      case 'agent': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace), { create: true });
+        if (flags.once) {
+          // 支持 --quote：把"在回答哪个问题 / 改哪一段"一起带进去，
+          // 与 Web 端同一套语义（composeQuotedInput 是唯一实现）。
+          const quote = flags.quote
+            ? {
+                kind: String(flags['quote-kind'] || 'text') === 'question' ? 'question' : 'text',
+                text: String(flags.quote),
+              }
+            : null;
+          // 输入来源：stdin（io.input）优先，其次 --input/位置参数。
+          // 宿主 agent 和脚本没法交互式输入，直接给参数最省事。
+          const lastInput =
+            io.input || (flags.input ? String(flags.input) : '') || positional.slice(1).join(' ');
+          const r = await agentStep(cfg, w, { lastInput, quote });
+          console.log(JSON.stringify(r, null, 2));
+        } else {
+          await agentInteractive(cfg, w);
+        }
+        break;
+      }
+      case 'panel': {
+        // --html：生成自包含状态面板（放进 IDE / Codex / 浏览器都能看）
+        if (flags.html) {
+          const P = await import('./csl/panel.js');
+          const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace || ''), { create: true });
+          const r = P.writePanel(w, { sessionId: flags.session || 'default', out: typeof flags.html === 'string' ? flags.html : '' });
+          console.log(`状态面板已生成 → ${r.file}（${(r.bytes / 1024).toFixed(0)} KB，自包含单文件）`);
+          console.log('用浏览器打开即可查看：认知状态 · 学到的风格 · 写过的作品 · 冻结的决断 · 事件账本');
+          break;
+        }
+        const f =
+          positional[0] ||
+          `${workspace || path.join(process.cwd(), '.stylotrace')}/protocol/state.json`;
+        console.log(ws.renderPanel(f));
+        break;
+      }
+      case 'status': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace));
+        console.log(ws.statusReport(w));
+        break;
+      }
+      case 'governance': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace));
+        if (flags.intent !== undefined || flags.focus !== undefined) {
+          const patch = {};
+          if (flags.intent !== undefined) patch.authorIntent = flags.intent;
+          if (flags.focus !== undefined) patch.currentFocus = flags.focus;
+          updateGovernance(w, patch, { source: 'manual' });
+        }
+        const g = readGovernance(w);
+        console.log(
+          `作者长期意图: ${g.authorIntent || '（未设置，用 --intent "…" 设置）'}\n` +
+            `当前聚焦: ${g.currentFocus || '（未设置，用 --focus "…" 设置）'}\n` +
+            `来源: ${g.source} · 更新: ${g.updatedAt || '—'}`,
+        );
+        break;
+      }
+      case 'clarify': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace), { create: true });
+        if (flags.once) {
+          const r = await clarifyOnce(cfg, w, {
+            input: io.input || (flags.input ? String(flags.input) : '') || positional.slice(1).join(' '),
+          });
+          console.log(JSON.stringify(r, null, 2));
+        } else {
+          await clarifyInteractive(cfg, w);
+        }
+        break;
+      }
+      case 'interview': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace), { create: true });
+        if (flags.once) {
+          const r = await interviewStep(cfg, w, {
+            lastInput:
+              io.input || (flags.input ? String(flags.input) : '') || positional.slice(1).join(' '),
+          });
+          console.log(JSON.stringify(r, null, 2));
+        } else if (flags.summary) {
+          console.log(await interviewSummary(cfg, w));
+        } else {
+          await interviewInteractive(cfg, w);
+        }
+        break;
+      }
+      case 'audience': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await runAudience(cfg, w, {
+          file: flags.file || null,
+          quick: Boolean(flags.quick),
+        });
+        console.log(renderAudience(r));
+        break;
+      }
+      case 'debate': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await runDebate(cfg, w, {
+          file: flags.file || null,
+          quick: Boolean(flags.quick),
+        });
+        console.log(renderDebate(r));
+        break;
+      }
+      case 'fact-check': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await factCheck(cfg, w, { file: flags.file || null });
+        console.log(renderFactCheck(r));
+        break;
+      }
+      case 'proofread': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await proofread(cfg, w, { file: flags.file || null });
+        console.log(renderProofread(r));
+        break;
+      }
+      case 'norm': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace));
+        const file = flags.file ? path.resolve(String(flags.file)) : path.join(w, 'draft.md');
+        if (!fs.existsSync(file)) throw new Error(`找不到文稿: ${file}`);
+        const state = ws.readState(w);
+        const r = await academicNorm(cfg, w, { file, genre: state?.confirmed?.genre || '' });
+        console.log(renderNormReport(r));
+        console.log(`\n学术规范审计报告已落盘 → ${path.join(w, 'vault', 'norm-report.md')}`);
+        break;
+      }
+      case 'doc': {
+        const sub = positional[0] || '';
+        const file = positional[1] || flags.file || '';
+        if (!file) throw new Error('用法: stylotrace doc translate|restyle <文件> [--lang en] [--style x] [--out out]');
+        const w = ws.resolveWorkspace(cfg, flags.workspace || process.cwd());
+        const opts = { file, lang: flags.lang || 'en', style: flags.style || '', out: flags.out || '' };
+        const r = sub === 'translate' ? await docTranslate(cfg, w, opts)
+          : sub === 'restyle' ? await docRestyle(cfg, w, opts)
+          : (() => { throw new Error(`未知文档子命令: ${sub}（支持 translate / restyle）`); })();
+        console.log(renderDocReport(r));
+        break;
+      }
+      case 'originality': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const file = flags.file ? path.resolve(String(flags.file)) : path.join(w, 'draft.md');
+        if (!fs.existsSync(file)) throw new Error(`找不到文稿: ${file}`);
+        const r = originalityScan(fs.readFileSync(file, 'utf8'), w);
+        console.log(JSON.stringify(r, null, 2));
+        break;
+      }
+      case 'review': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await runReview(cfg, w, {
+          file: flags.file ? path.resolve(String(flags.file)) : null,
+          fix: Boolean(flags.fix),
+          quick: Boolean(flags.quick),
+        });
+        console.log(renderReview(r.report));
+        process.exitCode = r.report.passed ? 0 : 1;
+        break;
+      }
+      case 'rag': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''));
+        const sub = positional[0] || 'status';
+        if (sub === 'ingest') {
+          if (positional.length < 2) throw new Error('用法: stylotrace rag ingest <results.json>');
+          const raw = JSON.parse(fs.readFileSync(path.resolve(positional[1]), 'utf8'));
+          const results = Array.isArray(raw) ? raw : raw.results;
+          const r = ingestSearchResults(w, results);
+          console.log(`已回灌 ${r.ingested} 条检索结果（缓存 ${r.cached} 条，已加入素材）`);
+        } else if (sub === 'ingest-assets') {
+          if (positional.length < 2) throw new Error('用法: stylotrace rag ingest-assets <results.json>');
+          const raw = JSON.parse(fs.readFileSync(path.resolve(positional[1]), 'utf8'));
+          const results = Array.isArray(raw) ? raw : raw.results;
+          const r = ingestAssetResults(w, results, { purpose: 'asset-search' });
+          console.log(
+            `已回灌 ${r.ingested} 组联网资产${r.kbAdded ? `，${r.kbAdded} 本书目入个人知识库` : ''}（缓存 ${r.cached} 条）`,
+          );
+        } else if (sub === 'search') {
+          const text = flags.text || positional.slice(1).join(' ');
+          if (!text) throw new Error('用法: stylotrace rag search "<要检索的文本>" [--topic 主题]');
+          const queries = buildSearchQueries(text, { topic: flags.topic ? String(flags.topic) : '' });
+          if (!queries.length) {
+            console.log('（没有可检索的高价值查询：需要事实候选或《引文》）');
+            break;
+          }
+          if (cfg.ragEndpoint && cfg.ragApiKey) {
+            const r = await searchOnline(cfg, queries);
+            if (r.searched) {
+              const ing = ingestSearchResults(w, r.results);
+              console.log(`直连检索命中并回灌 ${ing.ingested} 组结果 → 缓存与素材`);
+            } else {
+              console.log(r.hint);
+            }
+          } else {
+            const r = requestHostSearch(w, queries, { purpose: 'manual' });
+            console.log(`已排队 ${r.queued} 条宿主检索请求（${r.requestId}）→ requests.jsonl`);
+            console.log('宿主检索后用: stylotrace rag ingest <results.json> 回灌');
+          }
+        } else if (sub === 'needs') {
+          const needs = pendingDataNeeds(w);
+          if (!needs.length) {
+            console.log('（当前没有待办检索——需要数据时 Stylotrace 会自动排队并提示）');
+            break;
+          }
+          console.log(`待办资料检索 ${needs.length} 组（供宿主/学术/数据分析 agent 供给）：`);
+          for (const n of needs) {
+            console.log(`  [${n.purpose}] ${(n.queries || []).join(' / ')}`);
+          }
+          console.log('检索后运行: stylotrace rag ingest <results.json> 回灌');
+        } else {
+          const st = ragStatus(w, cfg);
+          console.log(
+            `RAG 状态:\n` +
+              `  缓存 ${st.cached} 条 · 待办请求 ${st.pendingRequests} 条\n` +
+              `  通路: ${st.direct ? `直连 ${st.endpoint}` : '宿主代检（未配置 STYLOTRACE_RAG_ENDPOINT）'}`,
+          );
+        }
+        break;
+      }
+      case 'persona': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''));
+        const st = personaStatus(w);
+        if (flags.refresh || !st.built) {
+          const p = await buildPersona(cfg, w);
+          if (flags.refresh) await personaToVector(cfg, w);
+          console.log(`风格肖像已生成（${p.fallback ? '确定性兜底' : 'LLM 侧写'}）→ vault/persona.md`);
+        }
+        const brief = personaBrief(w, { limit: 10 });
+        console.log(brief || '（还没有风格肖像，先运行 stylotrace persona --refresh）');
+        break;
+      }
+      case 'bible': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''));
+        const sub = positional[0] || 'list';
+        if (sub === 'list') {
+          const bs = listBibles(w);
+          if (!bs.length) {
+            console.log('（还没有文章圣经。长文/小说交付时会自动沉淀；也可 stylotrace bible distill）');
+            break;
+          }
+          for (const b of bs) {
+            console.log(`• ${b.title}（更新 ${(b.updatedAt || '').slice(0, 10)}${b.fallback ? '，确定性' : ''}）`);
+          }
+        } else if (sub === 'view') {
+          if (positional.length < 2) throw new Error('用法: stylotrace bible view <标题>');
+          const b = readBible(w, positional[1]);
+          if (!b) throw new Error(`没有「${positional[1]}」的圣经`);
+          console.log(JSON.stringify(b, null, 2));
+        } else if (sub === 'save') {
+          if (positional.length < 2) throw new Error('用法: stylotrace bible save <标题> [--world 世界观] [--style 文风]');
+          const b = saveBible(w, {
+            title: positional[1],
+            world: flags.world || '',
+            styleNote: flags.style || '',
+            continuityNotes: '续写前先读本文档，保持世界观/角色/时间线一致。',
+          });
+          console.log(`圣经已保存 → ${b.title}`);
+        } else if (sub === 'distill') {
+          const r = await distillBible(cfg, w, { title: positional[1] || '' });
+          console.log(r.saved ? `圣经已沉淀 → ${r.title}` : '（没有可沉淀的成稿/大纲）');
+        } else {
+          throw new Error(`未知子命令「${sub}」。可用: list / view / save / distill`);
+        }
+        break;
+      }
+      case 'emotion': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const file = flags.file ? path.resolve(String(flags.file)) : path.join(w, 'draft.md');
+        if (!fs.existsSync(file)) throw new Error(`找不到文稿: ${file}`);
+        console.log(renderEmotionCurve(emotionCurve(fs.readFileSync(file, 'utf8'))));
+        break;
+      }
+      case 'curve': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const file = flags.file ? path.resolve(String(flags.file)) : '';
+        const c = rhythmCurve(w, { file });
+        console.log(renderRhythmCurve(c));
+        if (c.file) console.log(`\n节奏曲线已落盘 → ${c.file}`);
+        break;
+      }
+      case 'consistency': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace));
+        const file = flags.file ? path.resolve(String(flags.file)) : '';
+        const r = await checkConsistency(cfg, w, { file });
+        console.log(renderConsistency(r));
+        if (r.file) console.log(`\n伏笔回收报告已落盘 → ${r.file}`);
+        break;
+      }
+      case 'diagnose': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace));
+        const file = flags.file ? path.resolve(String(flags.file)) : path.join(w, 'draft.md');
+        if (!fs.existsSync(file)) throw new Error(`找不到文稿: ${file}`);
+        const text = fs.readFileSync(file, 'utf8');
+        const st = ws.readState(w);
+        const r = await diagnoseFakeThinking(cfg, w, {
+          text,
+          genre: st.confirmed?.genre || '',
+          topic: st.confirmed?.topic || '',
+        });
+        console.log(renderFakeThinking(r));
+        break;
+      }
+      case 'experiment': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''));
+        const sub = positional[0] || 'help';
+        if (sub === 'metrics') {
+          if (positional.length < 2) throw new Error('用法: stylotrace experiment metrics <file.md>');
+          const text = fs.readFileSync(path.resolve(positional[1]), 'utf8');
+          console.log(renderHumanMetrics(humanMetrics(text)));
+        } else if (sub === 'collect') {
+          const corpus = collectAuthorCorpus(w);
+          const stats = corpusStats(corpus);
+          const out = flags.out ? path.resolve(String(flags.out)) : path.join(w, 'vault', 'experiments', 'corpus.json');
+          fs.mkdirSync(path.dirname(out), { recursive: true });
+          fs.writeFileSync(out, JSON.stringify(corpus, null, 2) + '\n', { mode: 0o600 });
+          console.log(
+            `已采集作者语料包 → ${out}\n` +
+              `  旧稿样本 ${stats.samples} · 修改记录 ${stats.edits} · 对话话语 ${stats.utterances} · ` +
+              `知识库 ${stats.knowledge} · 作品 ${stats.libraryPieces} · ${stats.hasVector ? '风格向量 ✓' : '风格向量（无）'}`,
+          );
+        } else if (sub === 'run') {
+          if (!flags.topic) throw new Error('用法: stylotrace experiment run --topic "题目" [--authors "名=文件;名2=文件2"]');
+          const authors = [];
+          if (flags.authors) {
+            for (const part of String(flags.authors).split(';')) {
+              const [name, file] = part.split('=');
+              if (!file) throw new Error(`作者格式应为 "名=文件"：${part}`);
+              const sample = fs.readFileSync(path.resolve(file.trim()), 'utf8');
+              authors.push({ name: (name || '').trim(), sample });
+            }
+          } else {
+            // 未指定作者：从本工作区的风格样本自动收集（每位样本一位"作者"）
+            const corpus = collectAuthorCorpus(w);
+            corpus.samples.forEach((s, i) => authors.push({ name: `样本${i + 1}`, sample: s }));
+          }
+          if (!authors.length) throw new Error('没有作者样本：请用 --authors 指定，或先在本工作区贴风格底稿');
+          const r = await runPairExperiment(cfg, {
+            topic: String(flags.topic),
+            genre: flags.genre ? String(flags.genre) : '散文',
+            targetWords: flags.words ? Number(flags.words) : 800,
+            authors,
+            workspace: w,
+          });
+          if (!r.ok) throw new Error(r.hint || '实验失败');
+          console.log(r.report);
+          console.log(`\n结果目录：${r.dir}（results.json / blind.json / report.md）`);
+        } else if (sub === 'ablation') {
+          if (!flags.topic || !flags.author) throw new Error('用法: stylotrace experiment ablation --topic "题目" --author <样本文件>');
+          const sample = fs.readFileSync(path.resolve(String(flags.author)), 'utf8');
+          const r = await runAblation(cfg, {
+            topic: String(flags.topic),
+            genre: flags.genre ? String(flags.genre) : '散文',
+            targetWords: flags.words ? Number(flags.words) : 800,
+            sample,
+            workspace: w,
+          });
+          if (!r.ok) throw new Error(r.hint || '消融失败');
+          console.log('消融实验（指标越高越接近真人，对比各变体下降幅度）：');
+          for (const v of r.variants) {
+            if (!v.ok) {
+              console.log(`  ${v.label}：生成失败（无密钥）`);
+              continue;
+            }
+            console.log(
+              `  ${v.label}：句长σ ${v.metrics.sentenceLengthStddev} · 段落CV ${v.metrics.paragraphCv} · TTR ${v.metrics.bigramTtr} · 黑名单 ${v.metrics.blacklistHits}`,
+            );
+          }
+          console.log(`\n结果目录：${r.dir}`);
+        } else if (sub === 'survey') {
+          const out = flags.out ? path.resolve(String(flags.out)) : path.join(w, 'vault', 'experiments', 'survey.json');
+          fs.mkdirSync(path.dirname(out), { recursive: true });
+          fs.writeFileSync(out, JSON.stringify(userSurveyTemplate(), null, 2) + '\n', { mode: 0o600 });
+          console.log(`问卷模板已生成 → ${out}（盲评 + 用户体验两部分）`);
+        } else if (sub === 'blind') {
+          if (positional.length < 2) throw new Error('用法: stylotrace experiment blind <run目录> [--out file]');
+          const dir = path.resolve(positional[1]);
+          const blind = JSON.parse(fs.readFileSync(path.join(dir, 'blind.json'), 'utf8'));
+          const md = renderBlindSurvey(blind);
+          const out = flags.out ? path.resolve(String(flags.out)) : path.join(dir, 'blind-survey.md');
+          fs.writeFileSync(out, md + '\n', { mode: 0o600 });
+          console.log(`一页盲评问卷已导出 → ${out}`);
+        } else if (sub === 'summarize') {
+          if (positional.length < 2) throw new Error('用法: stylotrace experiment summarize <run目录> [--answers answers.json]');
+          const dir = path.resolve(positional[1]);
+          const results = JSON.parse(fs.readFileSync(path.join(dir, 'results.json'), 'utf8'));
+          let answers = [];
+          if (flags.answers) answers = JSON.parse(fs.readFileSync(path.resolve(String(flags.answers)), 'utf8'));
+          const md = summarizeResults(results, answers);
+          const out = path.join(dir, 'summary.md');
+          fs.writeFileSync(out, md + '\n', { mode: 0o600 });
+          console.log(md);
+          console.log(`\n论文表格已写入 → ${out}`);
+        } else if (sub === 'blind-stats') {
+          if (positional.length < 2) {
+            throw new Error('用法: stylotrace experiment blind-stats <answers.csv>（表头 pairIndex,choice,correct）');
+          }
+          const answers = parseBlindCsv(fs.readFileSync(path.resolve(positional[1]), 'utf8'));
+          if (!answers.length) throw new Error('没有解析到有效作答（要求表头 pairIndex,choice,correct，choice 为 A/B/none）');
+          const r = blindStatsReport(answers);
+          console.log(r.table.map(([k, v]) => `${k}: ${v}`).join('\n'));
+          const out = flags.out ? path.resolve(String(flags.out)) : path.join(w, 'vault', 'experiments', 'blind-stats.md');
+          fs.mkdirSync(path.dirname(out), { recursive: true });
+          fs.writeFileSync(out, r.table.map(([k, v]) => `| ${k} | ${v} |`).join('\n') + '\n', { mode: 0o600 });
+          console.log(`\n报告已写入 → ${out}`);
+        } else {
+          throw new Error('用法: stylotrace experiment metrics|collect|run|ablation|survey|blind|blind-stats|summarize');
+        }
+        break;
+      }
+      case 'style-adapter': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace));
+        if (flags.distill) {
+          const r = await distillStyleAdapter(cfg, w);
+          if (!r.distilled) {
+            console.log('没有可蒸馏的风格素材：先贴旧稿、归档作品或做 point-edit。');
+          } else {
+            console.log(`风格适配卡已蒸馏（${r.card.mode}）→ ${r.mdFile}`);
+            console.log(loadStyleAdapter(w, 1200));
+          }
+        }
+        if (flags.dataset !== undefined) {
+          const ds = buildStyleDataset(w, {
+            outFile: flags.dataset && flags.dataset !== true ? String(flags.dataset) : null,
+          });
+          console.log(
+            `微调数据集已生成：${ds.records} 条（样本 ${ds.sources.samples} / 作品 ${ds.sources.pieces} / 修改对 ${ds.sources.edits}）→ ${ds.file}`,
+          );
+        }
+        if (flags.lora) {
+          const r = await submitFineTune(cfg, w, {
+            file: flags.dataset && flags.dataset !== true ? String(flags.dataset) : null,
+            model: flags.model ? String(flags.model) : null,
+          });
+          if (r.submitted) {
+            console.log(`微调任务已提交：${r.jobId}（文件 ${r.fileId}）`);
+          } else {
+            console.log(r.hint);
+          }
+        }
+        if (!flags.distill && flags.dataset === undefined && !flags.lora) {
+          const st = adapterStatus(w);
+          console.log(
+            `风格微调状态:\n` +
+              `  素材: 旧稿 ${st.samples} · 作品 ${st.pieces} · 修改对 ${st.edits}\n` +
+              `  适配卡: ${st.hasAdapter ? '✓ 已蒸馏' : '（未蒸馏，--distill）'}\n` +
+              `  数据集: ${st.hasDataset ? '✓ 已生成' : '（未生成，--dataset）'}`,
+          );
+        }
+        break;
+      }
+      case 'modulator': {
+        // 兼容两种写法：`modulator <工作区> --train` 与 `modulator --train <工作区>`
+        const wDir =
+          flags.workspace ||
+          (typeof flags.train === 'string' ? flags.train : null) ||
+          (typeof flags.export === 'string' ? flags.export : null) ||
+          positional[0] ||
+          '';
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, wDir));
+        if (Boolean(flags.train)) {
+          const r = forceRetrain(w);
+          if (r.ok) {
+            console.log(
+              `调制器已重训 → ${weightsFile(w)}\n` +
+                `  偏好对 ${r.meta.pairs} · 正例 ${r.meta.positives} · loss ${r.meta.loss}\n` +
+                `  权重: ${Object.entries(r.weights)
+                  .map(([k, v]) => `${k}=${v}`)
+                  .join('  ')}`,
+            );
+          } else {
+            console.log(`调制器未训练：${r.reason}`);
+          }
+          break;
+        }
+        if (flags.export) {
+          console.log(weightsFile(w));
+          break;
+        }
+        const st = modulatorStatus(w);
+        console.log(
+          `外层调制器状态:\n` +
+            `  模式: ${st.mode === 'learned' ? '✓ 学习权重（签名→模型）' : '经验默认权重（偏好对不足）'}\n` +
+            `  数据: 正例 ${st.positives} · 编辑对 ${st.pairs} · 语料 ${st.chars} 字符\n` +
+            `  签名: ${st.signature}\n` +
+            `  权重表: ${Object.entries(st.weights)
+              .map(([k, v]) => `${k}=${v}`)
+              .join('  ')}`,
+        );
+        break;
+      }
+      case 'author-sheet': {
+        const wDir =
+          flags.workspace ||
+          (typeof flags.refresh === 'string' ? flags.refresh : null) ||
+          positional[0] ||
+          '';
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, wDir));
+        const sheet = Boolean(flags.refresh)
+          ? await extractAuthorSheet(cfg, w, { force: true })
+          : await extractAuthorSheet(cfg, w);
+        // 空状态也要说人话，不要抛栈：告诉用户怎么才会有内容
+        if (!sheet.ok) {
+          console.log(
+            '作者写作清单：还没有可归纳的信号。\n' +
+              '  它靠你写作过程中确认过的主题/立场/论点/红线/读者来归纳，现在这些还是空的。\n' +
+              '  怎么让它有内容：先跑一次 stylotrace agent（或 clarify / interview）把你的想法聊进去，\n' +
+              '  再回来运行 stylotrace author-sheet。',
+          );
+          break;
+        }
+        console.log(
+          `作者写作清单（${sheet.mode}）→ ${sheetFile(w)}\n` +
+            FIVE_QUESTIONS.map((q) => {
+              const v = sheet[q.id];
+              const val = Array.isArray(v) ? (v.length ? v.join('；') : '（未定）') : v || '（未定）';
+              return `  ${q.label}：${String(val).slice(0, 100)}`;
+            }).join('\n') +
+            `\n  关键词：${(sheet.keywords || []).slice(0, 10).join('、') || '（无）'}`,
+        );
+        break;
+      }
+      case 'profile': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''));
+        const sub = positional[0] || 'status';
+        if (sub === 'export') {
+          const r = exportProfile(w, flags.to ? String(flags.to) : '');
+          console.log(
+            `风格档案已导出 → ${r.file}（样本 ${r.samples}、修改记录 ${r.edits}${r.hasAdapter ? '、适配卡' : ''}）`,
+          );
+        } else if (sub === 'import') {
+          if (positional.length < 2) throw new Error('用法: stylotrace profile import <bundle.json>');
+          const r = importProfile(w, positional[1]);
+          console.log(
+            `已导入合并：${r.dimsMerged} 维、样本 +${r.samplesAdded}、修改记录 +${r.editsAdded}（本地高置信维度未被动覆盖）`,
+          );
+        } else {
+          const st = profileStatus(w);
+          console.log(
+            `风格档案状态:\n` +
+              `  write ${st.write}/14 维 · read ${st.read}/7 维\n` +
+              `  样本 ${st.samples} · 修改记录 ${st.edits} · 适配卡 ${st.hasAdapter ? '✓' : '（无）'}\n` +
+              `  全局路径: ${st.globalPath || '（未设置 STYLOTRACE_HOME；export 默认导出到工作区 vault/style-profile-export.json）'}`,
+          );
+        }
+        break;
+      }
+      case 'quote': {
+        const raw = positional.join(' ');
+        if (!raw) throw new Error('用法: stylotrace quote "<选中的原句>"');
+        const q = parseQuoteArg(raw);
+        if (!q) throw new Error('引用为空');
+        console.log(
+          `〔Stylotrace 引用〕《${q}》\n修改指令：<在这里写你要怎么改，例如：这句太文艺，收一点>`,
+        );
+        break;
+      }
+      case 'hook': {
+        const w = positional[0] || workspace;
+        if (!w) throw new Error('用法: stylotrace hook <工作区> [payload]');
+        runHook(w, positional[1] || '');
+        break;
+      }
+      case 'checklist': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        ws.ensureWorkspace(w);
+        console.log(renderChecklist(ws.readState(w)));
+        break;
+      }
+      case 'style': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace));
+        if (flags.memory) {
+          const shot = buildStyleShot(w, { topic: String(flags.memory) });
+          if (!shot) {
+            console.log('（没有可检索的风格记忆：工作区还没有旧稿或编辑记录）');
+          } else {
+            console.log(`风格记忆检索「${flags.memory}」:`);
+            if (!shot.samples.length) console.log('  旧稿: （无）');
+            for (const s of shot.samples)
+              console.log(
+                `  [旧稿 ${s.score}] ${s.source}\n    ${s.text.slice(0, 80)}${s.text.length > 80 ? '…' : ''}`,
+              );
+            if (!shot.edits.length) console.log('  修改对: （无）');
+            for (const e of shot.edits)
+              console.log(
+                `  [修改 ${e.score}] ${e.original} → ${e.changed}${e.intent ? `（${e.intent}）` : ''}`,
+              );
+            if (shot.associations?.length) console.log(`  联想库: ${shot.associations.join('、')}`);
+          }
+        }
+        if (flags.extract) {
+          const ex = await extractStyleFromSamples(w, cfg);
+          console.log(`风格底稿提取：${ex.extracted} 份已提取，${ex.skipped} 份跳过/失败`);
+        }
+        if (flags.backfill) {
+          const r = backfillFromContext(w);
+          console.log(`已从对话日志回填 ${r.applied} 条风格信号（跳过 ${r.skipped} 条）`);
+        }
+        if (flags.pulses) {
+          const pulses = recentPulses(w);
+          if (!pulses.length) {
+            console.log('（还没有风格脉搏：澄清/大纲/写作/修改时会自动记录）');
+          } else {
+            console.log('风格脉搏（最近记录）:');
+            for (const p of pulses) console.log(`  · ${renderPulse(p)}`);
+          }
+        }
+        if (flags.signals) {
+          const log = implicitSignalLog(w);
+          if (!log.length) {
+            console.log('（还没有隐式风格信号流水：澄清每轮对话会自动记录）');
+          } else {
+            console.log('隐式风格信号流水（每轮对话被动采集）:');
+            for (const s of log) {
+              console.log(
+                `  · 第 ${s.round} 轮 ${(s.ts || '').slice(11, 19)}：${s.text}${
+                  s.dims?.length ? ` → ${s.dims.slice(0, 5).join('、')}` : ''
+                }`,
+              );
+            }
+          }
+        }
+        if (flags.export) {
+          const dest = path.join(w, 'vault', 'style-profile.md');
+          fs.writeFileSync(dest, renderStyleProfile(w) + '\n');
+          console.log(`风格档案已导出 → ${dest}`);
+        }
+        const p = styleProgress(w);
+        console.log(
+          `风格档案进度:\n` +
+            `  write（语言层）: 已学 ${p.write.learned}/${p.write.total} 维\n` +
+            `  read（结构层）: 已学 ${p.read.learned}/${p.read.total} 维`,
+        );
+        for (const [style, s] of Object.entries(p)) {
+          if (!s.top.length) continue;
+          console.log(`\n${style === 'write' ? '语言层' : '结构层'}最近信号:`);
+          for (const t of s.top) {
+            console.log(
+              `  · ${t.dim} → ${t.value}（置信 ${(t.confidence * 100).toFixed(0)}%${t.evidence?.length ? '，依据: ' + t.evidence.slice(-1)[0] : ''}）`,
+            );
+          }
+        }
+        break;
+      }
+      case 'style-vector': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace));
+        if (flags.refresh) {
+          const r = await refreshStyleVector(cfg, w, { kind: 'manual', evidence: '手动刷新' });
+          console.log(
+            `已刷新风格向量：模式 ${r.mode} · 动态维度 ${r.dynamic} · 困惑度采样 ${r.samples}`,
+          );
+        }
+        console.log(renderVectorSummary(vectorSummary(w)));
+        break;
+      }
+      case 'outline': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await generateOutline(cfg, w);
+        console.log(`《${r.outline.title}》 ${r.outline.sections.length} 节\n`);
+        r.outline.sections.forEach((s, i) =>
+          console.log(
+            `${i + 1}. ${s.heading}（${s.function}）\n   ${(s.keyPoints || []).join(' / ')}`,
+          ),
+        );
+        break;
+      }
+      case 'outline-review': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const state = ws.readState(w);
+        const r = await reviewOutline(cfg, w, { outline: state.outline || null });
+        if (r.revised) {
+          state.outline = r.outline;
+          ws.writeState(w, state);
+          console.log(`已按评审自动修订大纲（${r.report.score} 分）。`);
+        }
+        console.log(renderOutlineReview(r.report, { revised: r.revised }));
+        break;
+      }
+      case 'style-eval': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await evaluateStyleFidelity(cfg, w, { file: flags.file || null });
+        const fb = applyEvalFeedback(w, r);
+        console.log(renderStyleEval(r));
+        if (fb.applied) console.log(`已把 ${fb.applied} 条漂移证据写回风格档案。`);
+        break;
+      }
+      case 'write': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const index = flags.section !== undefined ? Number(flags.section) : null;
+        const r = await writeSection(cfg, w, {
+          index,
+          force: Boolean(flags.force),
+        });
+        console.log(`已写入 ${r.sections} 节 → ${r.draftFile}`);
+        for (const s of r.report) {
+          console.log(
+            `  ${s.index}. ${s.heading}：目标 ${s.target} 字 / 实际 ${s.actual} 字${s.expanded ? '（已扩写）' : ''}`,
+          );
+        }
+        console.log(`合计 ${r.total} 字（目标 ${cfg.targetWords} 字）`);
+        if (r.hint) console.log(`提示: ${r.hint}`);
+        break;
+      }
+      case 'restyle': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await restyle(cfg, w, {
+          direction: flags.direction ? String(flags.direction) : '',
+          section: flags.section !== undefined ? Number(flags.section) : null,
+          force: Boolean(flags.force),
+        });
+        console.log(`已按「${r.direction}」重写 ${r.sections} 节 → ${r.draftFile}`);
+        for (const s of r.report) {
+          if (s.skipped) {
+            console.log(`  ${s.index}. ${s.heading}：跳过（本节为空）`);
+          } else {
+            console.log(`  ${s.index}. ${s.heading}：${s.oldLen} 字 → ${s.newLen} 字`);
+          }
+        }
+        break;
+      }
+      case 'transform': {
+        // positional[0]=预设，工作区在 positional[1]
+        const w = ws.resolveWorkspace(cfg, flags.workspace || positional[1] || '');
+        const preset = positional[0];
+        if (!preset || !Object.keys(PRESETS).some((k) => preset === k || preset.startsWith(k + ':'))) {
+          throw new Error(`用法: stylotrace transform <预设>，可用: ${Object.keys(PRESETS).join(' / ')}（tone 可用 tone:formal）`);
+        }
+        const r = await transform(cfg, w, {
+          preset,
+          tone: flags.tone ? String(flags.tone) : '',
+          target: flags.target !== undefined ? Number(flags.target) : 0,
+          section: flags.section !== undefined ? Number(flags.section) : null,
+          force: Boolean(flags.force),
+        });
+        console.log(`已${r.preset === 'tone' ? '改语气' : PRESETS[r.preset].label} ${r.sections} 节 → ${r.draftFile}`);
+        for (const s of r.report) {
+          if (s.skipped) console.log(`  ${s.index}. ${s.heading}：跳过`);
+          else console.log(`  ${s.index}. ${s.heading}：${s.oldLen} → ${s.newLen} 字（目标 ${s.target}）`);
+        }
+        break;
+      }
+      case 'history': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || positional[0] || ''));
+        const list = listHistory(w);
+        if (!list.length) {
+          console.log('（还没有版本快照：write/restyle/redteam --fix/transform 会自动生成）');
+        } else {
+          console.log(`版本快照（${list.length} 份，新→旧）:`);
+          for (const h of list) {
+            console.log(
+              `  ${list.indexOf(h) + 1}. ${h.ts || '?'} [${h.reason}] ${h.chars} 字 ${h.preview ? '— ' + h.preview : ''}`,
+            );
+          }
+        }
+        break;
+      }
+      case 'rollback': {
+        // positional[0]=快照序号，工作区在 positional[1]
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || positional[1] || ''));
+        const r = rollback(w, { index: Number(positional[0] || 1) });
+        console.log(`已回滚到第 ${positional[0] || 1} 份快照（[${r.reason}] ${r.ts}，${r.chars} 字）→ draft.md`);
+        break;
+      }
+      case 'genre': {
+        const name = positional[0] || '';
+        if (!name || name === 'list') {
+          console.log(`文体库（${genreNames().length} 种）: ${genreNames().join('、')}`);
+          console.log('查看规范: stylotrace genre <名称>');
+        } else if (GENRES[name]) {
+          console.log(genreBrief(name));
+        } else {
+          throw new Error(`未知文体「${name}」。可用: ${genreNames().join('、')}`);
+        }
+        break;
+      }
+      case 'library': {
+        // 子命令占用了 positional[0]，工作区统一走 --workspace 或 STYLOTRACE_WORKSPACE
+        const w = ws.resolveWorkspace(cfg, flags.workspace || '');
+        ws.ensureWorkspace(w);
+        const sub = positional[0] || 'list';
+        if (sub === 'list') {
+          console.log(listLibrary(w));
+        } else if (sub === 'scan') {
+          const r = await distillAll(w, cfg);
+          for (const x of r)
+            console.log(
+              `  ${x.category}: ${x.distilled ? `已蒸馏（${x.pieces} 篇）` : '（无作品）'}`,
+            );
+        } else if (sub === 'view') {
+          if (positional.length < 2) throw new Error('用法: stylotrace library view <类别>');
+          console.log(viewCategory(w, positional[1]));
+        } else if (sub === 'add') {
+          if (positional.length < 2)
+            throw new Error('用法: stylotrace library add <file> [--category 类别]');
+          const file = positional[1];
+          const text = fs.readFileSync(file, 'utf8');
+          const r = addPiece(w, {
+            title: flags.title || path.basename(file, path.extname(file)),
+            text,
+            source: file,
+            category: flags.category || '',
+            session: flags.session || '',
+          });
+          console.log(`已归档 → ${r.file}（分类: ${r.category}）`);
+        } else {
+          throw new Error(`未知子命令「${sub}」。可用: list / scan / view / add`);
+        }
+        break;
+      }
+      case 'knowledge': {
+        const w = ws.resolveWorkspace(cfg, flags.workspace || '');
+        ws.ensureWorkspace(w);
+        const sub = positional[0] || 'list';
+        const find = (q) => {
+          const es = listEntries(w);
+          return es.find((e) => e.id === q || normTitle(e.title) === normTitle(q));
+        };
+        if (sub === 'list') {
+          const es = listEntries(w);
+          if (!es.length) {
+            console.log(
+              '个人知识库为空。澄清时你提到读过的书/去过的地方会自动归纳收录；也可用 stylotrace knowledge add 手动加入。',
+            );
+            break;
+          }
+          for (const e of es) {
+            console.log(
+              `• ${e.title}${e.author ? `（${e.author}）` : ''} [${e.type}] 使用 ${e.usageCount || 0} 次${(e.confidence || 0) < 0.7 ? ' ⚠待核实' : ''} · ${
+                (e.createdAt || '').slice(0, 10) || ''
+              }`,
+            );
+          }
+        } else if (sub === 'add') {
+          if (positional.length < 2)
+            throw new Error(
+              '用法: stylotrace knowledge add <标题> [--author 作者] [--type book|place|theory|work] [--note 备注]',
+            );
+          const r = addEntry(w, {
+            title: positional[1],
+            author: flags.author || '',
+            type: flags.type || 'book',
+            note: flags.note || '',
+          });
+          console.log(r.created ? `已收录 → ${r.entry.id}` : `已存在（${r.entry.id}），未重复收录`);
+        } else if (sub === 'remove') {
+          if (positional.length < 2)
+            throw new Error('用法: stylotrace knowledge remove <标题或id>');
+          const hit = find(positional[1]);
+          if (!hit) throw new Error(`未找到「${positional[1]}」`);
+          removeEntry(w, hit.id);
+          console.log(`已移除「${hit.title}」`);
+        } else if (sub === 'search') {
+          if (positional.length < 2)
+            throw new Error('用法: stylotrace knowledge search <关键词>');
+          const q = positional.slice(1).join(' ');
+          // v0.65：配置了 embedding 时启用 BM25+语义混合检索，否则纯 BM25
+          const hits = cfg.embedBaseUrl && cfg.embedApiKey && cfg.embedModel
+            ? await matchKbHybrid(cfg, w, q, { limit: 10 })
+            : matchKb(w, q, { limit: 10 });
+          if (!hits.length) {
+            console.log('无匹配');
+            break;
+          }
+          for (const h of hits) {
+            console.log(
+              `• 《${h.title.replace(/^《|》$/g, '')}》${h.author ? `（${h.author}）` : ''} [${h.type}] score=${h.score}${
+                h.semantic !== undefined && h.semantic !== null ? ` 语义=${h.semantic} bm25=${h.bm25}` : ''
+              }${
+                h.note ? ` — ${h.note.slice(0, 60)}` : ''
+              }`,
+            );
+          }
+        } else if (sub === 'view') {
+          if (positional.length < 2) throw new Error('用法: stylotrace knowledge view <标题或id>');
+          const hit = find(positional[1]);
+          if (!hit) throw new Error(`未找到「${positional[1]}」`);
+          console.log(`# ${hit.title}（${hit.type}）`);
+          console.log(
+            `作者: ${hit.author || '—'}  来源: ${hit.source}  置信度: ${hit.confidence || '—'}${(hit.confidence || 0) < 0.7 ? '（待核实）' : ''}  使用: ${hit.usageCount || 0} 次`,
+          );
+          if (hit.note) console.log(`\n${hit.note}\n`);
+        } else if (sub === 'export') {
+          const r = exportKnowledge(w, flags.to ? String(flags.to) : '');
+          console.log(`已导出 ${r.entries} 条知识 + ${r.asked} 条提问记录 → ${r.file}`);
+          console.log('⚠ 知识库含个人阅读/经历，注意保管，不要上传到公开仓库。');
+        } else if (sub === 'import') {
+          if (positional.length < 2) throw new Error('用法: stylotrace knowledge import <file.json>');
+          const r = importKnowledge(w, positional[1]);
+          console.log(`已导入 ${r.added} 条新知识（重复项跳过），${r.askedAdded} 条提问记录`);
+        } else {
+          throw new Error(`未知子命令「${sub}」。可用: list / add / remove / search / view / export / import`);
+        }
+        break;
+      }
+      case 'recommend': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || positional[0] || ''));
+        const state = ws.readState(w);
+        const r = recommendReadings(state, w, { sessionAsked: false });
+        console.log(r || '（暂时没匹配到与你主题相近的思想库条目——再多说一点你的主题/立意试试）');
+        break;
+      }
+      case 'academic': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || positional[0] || ''));
+        const state = ws.readState(w);
+        console.log('【学术论证链】（行文思路骨架）');
+        console.log(academicNarrative(state));
+        const gap = academicGap(state);
+        if (!gap.ok) console.log(`\n缺口：${gap.missing.join('、')}（写作时会按论证链补全）`);
+        const draft = path.join(w, 'draft.md');
+        if (flags.file || fs.existsSync(draft)) {
+          const text = fs.readFileSync(flags.file ? path.resolve(String(flags.file)) : draft, 'utf8');
+          const scan = argumentScan(text);
+          console.log('\n【论证完备性扫描】');
+          for (const s of scan) {
+            console.log(`  ${s.ok ? '✓' : '✗'} ${s.heading}${s.issues.length ? ` — ${s.issues.join('；')}` : ''}`);
+          }
+        } else {
+          console.log('\n（还没有 draft.md；写作完成后可再跑一次看完备性）');
+        }
+        break;
+      }
+      case 'character': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''));
+        const sub = positional[0] || 'list';
+        if (sub === 'list') {
+          const chars = listCharacters(w);
+          if (!chars.length) {
+            console.log('（还没有角色档案。小说/推理写作时，澄清里答"角色"会自动建档；也可 stylotrace character add <名字>）');
+            break;
+          }
+          for (const c of chars) {
+            console.log(`• ${c.name}${c.mood ? `（情绪：${c.mood}）` : ''}${c.want ? ` — 想要：${c.want}` : ''}`);
+          }
+        } else if (sub === 'add') {
+          if (positional.length < 2) throw new Error('用法: stylotrace character add <名字> [--background 背景] [--want 想要的] [--fear 最怕的] [--secret 秘密] [--speech 说话方式]');
+          const c = saveCharacter(w, {
+            name: positional[1],
+            background: flags.background || '',
+            want: flags.want || '',
+            fear: flags.fear || '',
+            secret: flags.secret || '',
+            speech: flags.speech || '',
+            mood: flags.mood || '',
+          });
+          console.log(`角色档案已建 → vault/characters/${c.name}.json`);
+        } else if (sub === 'view') {
+          if (positional.length < 2) throw new Error('用法: stylotrace character view <名字>');
+          const c = loadCharacter(w, positional[1]);
+          if (!c) throw new Error(`角色不存在: ${positional[1]}`);
+          console.log(JSON.stringify(c, null, 2));
+        } else if (sub === 'remove') {
+          if (positional.length < 2) throw new Error('用法: stylotrace character remove <名字>');
+          const r = removeCharacter(w, positional[1]);
+          console.log(`已移除角色 ${r.removed}`);
+        } else if (sub === 'simulate') {
+          if (positional.length < 2) throw new Error('用法: stylotrace character simulate <名字> [--scene "场景"]');
+          const scene = flags.scene || '一个关键场景：他/她必须做一个决定';
+          const r = await simulateCharacter(cfg, w, { name: positional[1], scene });
+          if (!r.ok) {
+            console.log(r.hint);
+            break;
+          }
+          console.log(`【角色预演：${r.name}】${r.fallback ? '（LLM 不可用，确定性兜底）' : ''}`);
+          console.log(`心里想：${r.prediction.thoughts}`);
+          console.log(`会说：${r.prediction.speech}`);
+          console.log(`会做：${r.prediction.action}`);
+          console.log(`情绪：${r.prediction.mood}`);
+          console.log(`被推向：${r.prediction.nextPull}`);
+        } else {
+          throw new Error(`未知子命令「${sub}」。可用: list / add / view / remove / simulate`);
+        }
+        break;
+      }
+      case 'ingest': {
+        if (!positional.length) throw new Error('用法: stylotrace ingest <file...>');
+        const w = ws.resolveWorkspace(cfg, flags.workspace || '');
+        ws.ensureWorkspace(w);
+        const state = ws.readState(w);
+        state.materials = state.materials || [];
+        for (const f of positional) {
+          const r = isUrl(f) ? await fetchUrlInput(f, cfg) : await extractInput(f, cfg);
+          if (r.kind === 'text') {
+            const label = r.sourceUrl || path.basename(f);
+            state.materials.push(`[文件 ${label}] ${r.text.slice(0, 2000)}`);
+            console.log(`✓ ${label}（${r.source}，${r.text.length} 字）→ 素材${r.downloaded ? '（网络下载）' : ''}`);
+          } else {
+            console.log(`✗ ${f}: ${r.hint || '无法提取'}`);
+          }
+        }
+        ws.writeState(w, state);
+        break;
+      }
+      case 'dictate': {
+        if (!positional.length) throw new Error('用法: stylotrace dictate <音频文件...> [--to-draft]');
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''));
+        const state = ws.readState(w);
+        state.materials = state.materials || [];
+        const dictDir = path.join(w, 'vault', 'dictations');
+        fs.mkdirSync(dictDir, { recursive: true });
+        for (const f of positional) {
+          const r = await transcribeAudio(path.resolve(f), cfg);
+          if (!r.ok) {
+            console.log(`✗ ${f}: ${r.hint}`);
+            continue;
+          }
+          const ts = Date.now();
+          const base = path.basename(f, path.extname(f)).replace(/[^\w\u4e00-\u9fff-]+/g, '-');
+          const rawFile = path.join(dictDir, `${base}-${ts}.md`);
+          fs.writeFileSync(rawFile, `# 口述素材 ${base}\n\n${r.text}\n`);
+          state.materials.push(`[口述 ${path.basename(f)}] ${r.text.slice(0, 2000)}`);
+          console.log(`✓ ${f}（voice，${r.text.length} 字）→ ${rawFile}，已加入素材`);
+          if (flags['to-draft'] && cfg.apiKey) {
+            const { chatWithRetry } = await import('./llm.js');
+            const { DICTATE_DRAFT_PROMPT } = await import('./prompts.js');
+            const draft = await chatWithRetry(
+              cfg,
+              [
+                { role: 'system', content: '你是口述整理师：把口述内容整理成可直接写作的结构化草稿。' },
+                { role: 'user', content: DICTATE_DRAFT_PROMPT(r.text) },
+              ],
+              { temperature: 0.5, maxTokens: 2500 },
+            );
+            const draftFile = path.join(dictDir, `${base}-${ts}-draft.md`);
+            fs.writeFileSync(draftFile, draft.trim() + '\n');
+            console.log(`口述草稿已生成 → ${draftFile}`);
+          } else if (flags['to-draft'] && !cfg.apiKey) {
+            console.log('（--to-draft 需要配置 STYLOTRACE_LLM_API_KEY；已保留口述素材）');
+          }
+        }
+        ws.writeState(w, state);
+        break;
+      }
+      case 'export': {
+        const w = ws.resolveWorkspace(cfg, flags.workspace || '');
+        ws.ensureWorkspace(w);
+        const draft = path.join(w, 'draft.md');
+        if (!fs.existsSync(draft)) throw new Error('没有 draft.md，先 stylotrace write');
+        const text = fs.readFileSync(draft, 'utf8');
+        let out = '';
+        if (flags.official) {
+          if (!docxAvailable()) throw new Error('本机没有 python-docx，无法导出公文 docx');
+          const dest = flags.docx ? path.resolve(String(flags.docx)) : path.join(w, 'draft-公文.docx');
+          const state = ws.readState(w);
+          const title = state.outline?.title || state.confirmed?.topic || '';
+          out = exportOfficialDocx(text, dest, {
+            redhead: Boolean(flags.redhead),
+            title,
+          });
+          console.log(`已按 GB/T 9704-2012 排版导出公文 docx → ${out}${flags.redhead ? '（红头）' : ''}`);
+          break;
+        }
+        if (flags.academic) {
+          if (!docxAvailable()) throw new Error('本机没有 python-docx，无法导出学术 docx');
+          const dest = flags.docx ? path.resolve(String(flags.docx)) : path.join(w, 'draft-学术.docx');
+          out = exportAcademicDocx(text, dest);
+          console.log(`已按学术论文排版导出 docx → ${out}`);
+          break;
+        }
+        if (flags.docx) {
+          out = exportDocx(text, path.resolve(String(flags.docx)));
+          console.log(`已导出 docx → ${out}`);
+        } else if (flags.html) {
+          out = exportHtml(text, path.resolve(String(flags.html)));
+          console.log(`已导出 HTML → ${out}`);
+        } else if (flags.srt) {
+          out = exportSrt(text, path.resolve(String(flags.srt)));
+          console.log(`已导出字幕 SRT → ${out}`);
+        } else if (flags.latex) {
+          out = exportLatex(text, path.resolve(String(flags.latex)));
+          console.log(`已导出 LaTeX（公式原样保留）→ ${out}`);
+        } else if (flags.pdf) {
+          out = exportPdf(text, path.resolve(String(flags.pdf)));
+          console.log(`已导出 PDF → ${out}`);
+        } else if (flags.md) {
+          out = path.resolve(String(flags.md));
+          fs.writeFileSync(out, text);
+          console.log(`已导出 md → ${out}`);
+        } else {
+          if (docxAvailable()) {
+            out = exportDocx(text, path.join(w, 'draft.docx'));
+            console.log(`已导出 docx → ${out}`);
+          } else {
+            console.log('本机没有 python-docx，改用 md 导出:');
+            out = path.join(w, 'draft.md');
+            console.log(`  draft 即 md → ${out}`);
+          }
+        }
+        break;
+      }
+      case 'cite': {
+        const style = flags.style ? String(flags.style) : 'gbt7714';
+        if (!citationStyles().includes(style)) {
+          throw new Error(`未知引用格式「${style}」。可用: ${citationStyles().join(' / ')}`);
+        }
+        if (!flags.file && !positional[0]) {
+          throw new Error(
+            '用法: stylotrace cite \'{"type":"book","author":"作者","title":"书名","year":"2024"}\' [--style gbt7714|apa]\n' +
+              '或: stylotrace cite --file refs.json',
+          );
+        }
+        const entries = flags.file
+          ? readEntriesFile(path.resolve(String(flags.file)))
+          : parseEntries(positional[0]);
+        if (!entries.length) throw new Error('没有可格式化的条目');
+        console.log(formatReferences(entries, style).join('\n'));
+        break;
+      }
+      case 'citations': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        ws.ensureWorkspace(w);
+        if (flags.auto) {
+          const { autoReferences } = await import('./rag.js');
+          const r = autoReferences(w, { style: flags.style ? String(flags.style) : 'gbt7714' });
+          console.log(
+            r.file
+              ? `已从检索回灌来源生成参考文献草稿（${r.refs} 条，${flags.style || 'gbt7714'}）→ ${r.file}`
+              : '（没有检索回灌的来源，无法自动生成；可先 stylotrace rag ingest）',
+          );
+        } else if (flags.append) {
+          const draft = path.join(w, 'draft.md');
+          if (!fs.existsSync(draft)) throw new Error('没有 draft.md，先 stylotrace write');
+          const style = flags.style ? String(flags.style) : 'gbt7714';
+          const entries = readEntriesFile(path.resolve(String(flags.append)));
+          const list = formatReferences(entries, style);
+          const { snapshot } = await import('./history.js');
+          snapshot(w, 'citations-append');
+          const md = fs.readFileSync(draft, 'utf8').trimEnd();
+          fs.writeFileSync(draft, `${md}\n\n## 参考文献\n\n${list.map((x) => `- ${x}`).join('\n')}\n`);
+          console.log(`已追加 ${list.length} 条参考文献（${style}）→ ${draft}`);
+        } else {
+          const file = flags.file ? path.resolve(String(flags.file)) : path.join(w, 'draft.md');
+          if (!fs.existsSync(file)) throw new Error(`找不到文稿: ${file}`);
+          const cites = extractCitations(fs.readFileSync(file, 'utf8'));
+          if (!cites.length) {
+            console.log('（文稿中没有检测到《书名号》引文）');
+          } else {
+            console.log(`文中引文（${cites.length} 处）:`);
+            for (const c of cites) console.log(`  · 《${c.title}》${c.context ? `（${c.context.slice(0, 50)}…）` : ''}`);
+          }
+        }
+        break;
+      }
+      case 'redteam': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        if (flags.file) {
+          const text = fs.readFileSync(flags.file, 'utf8');
+          const report = audit(text);
+          if (flags.proofread) report.proofread = proofScan(text);
+          console.log(JSON.stringify(report, null, 2));
+          process.exitCode = report.passed ? 0 : 1;
+        } else {
+          const r = await redteam(cfg, w, { fix: Boolean(flags.fix) });
+          if (flags.proofread) {
+            r.report.proofread = proofScan(fs.readFileSync(r.draftFile, 'utf8'));
+          }
+          console.log(JSON.stringify(r.report, null, 2));
+          process.exitCode = r.report.passed ? 0 : 1;
+        }
+        break;
+      }
+      case 'dissect': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await dissect(cfg, w, { file: flags.file || null });
+        console.log(JSON.stringify(r.report, null, 2));
+        break;
+      }
+      case 'absorb': {
+        if (positional.length < 2) throw new Error('用法: stylotrace absorb <工作区> <edit.json>');
+        const w = ws.resolveWorkspace(cfg, positional[0]);
+        const edit = JSON.parse(fs.readFileSync(positional[1], 'utf8'));
+        const r = ws.absorbEdit(w, edit);
+        console.log(`write ${r.writeUpdated} 维 + read ${r.readUpdated} 维已更新`);
+        break;
+      }
+      case 'absorb-sample': {
+        // 用法: stylotrace absorb-sample "文段" [--author 鲁迅] [--source 出处] [--note 备注] [工作区]
+        const text = flags.text || positional[0] || '';
+        if (!text) throw new Error('用法: stylotrace absorb-sample "文段" [--author 作者] [--source 出处] [工作区]');
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || positional[1] || ''), { create: true });
+        const file = ws.absorbSample(w, text, { author: flags.author || '', source: flags.source || '', note: flags.note || '' });
+        console.log(`已吸收文段进风格样本 → ${file}`);
+        console.log('之后写作会自动检索为风格少样本；可用 stylotrace style --memory 查询预览');
+        break;
+      }
+      case 'fingerprint': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const fp = ws.refreshFingerprint(w);
+        console.log(`风格指纹已刷新: ${fp.highConfidenceDimensions.length} 个高置信度维度`);
+        break;
+      }
+      case 'diagnose-sentence': {
+        // 用法: stylotrace diagnose-sentence "句子" 或 --text "句子"(单句 AI 味诊断,确定性)
+        const text = flags.text || positional.join(' ') || '';
+        if (!text) throw new Error('用法: stylotrace diagnose-sentence "要诊断的句子" 或 --text "..."');
+        const d = diagnoseText(text);
+        console.log(d.verdict);
+        if (d.issues.length) console.log('  详情: ' + d.issues.join(' | '));
+        break;
+      }
+      case 'doctor':
+        await doctor(cfg, { ping: Boolean(flags.ping) });
+        break;
+      case 'version': {
+        const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+        let ver = 'unknown';
+        try { ver = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version || 'unknown'; } catch {}
+        console.log(`Stylotrace 引擎 v${ver}`);
+        console.log('更新: dsh plugin --profile web add dsh-plugin-stylotrace@latest');
+        console.log('      （检查提示、不自动执行——供应链安全，由你显式确认后更新）');
+        console.log(`凭据来源: ${cfg.credentialsSource || (cfg.apiKey ? '显式 STYLOTRACE_LLM_API_KEY' : '（未配置）')}`);
+        break;
+      }
+      case 'synthesize': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await synthesize(cfg, w, {
+          project: flags.project || '',
+          target: flags.target || 'report',
+          topic: flags.topic || '',
+          format: flags.format || 'md',
+        });
+        console.log(SYNTHESIZE_RENDER(r));
+        break;
+      }
+      case 'polish': {
+        const w = ws.resolveWorkspace(cfg, workspace);
+        const r = await polishLoop(cfg, w, {
+          maxRounds: flags.rounds !== undefined ? Number(flags.rounds) : 3,
+          threshold: flags.threshold !== undefined ? Number(flags.threshold) : 60,
+          force: Boolean(flags.force),
+        });
+        console.log(POLISH_RENDER(r));
+        break;
+      }
+      case 'preset': {
+        const sub = positional[0] || 'list';
+        if (sub === 'list') {
+          console.log('内置名家风格预设（开箱即用）：\n' + PRESET_LIST_RENDER(listPresets()));
+          console.log('\n用法: stylotrace preset view <id>（查看某位名家风格卡）');
+          console.log('改写: stylotrace restyle --direction "学鲁迅" [工作区]');
+        } else if (sub === 'view') {
+          const p = viewPreset(positional[1] || '');
+          if (!p) throw new Error(`未知预设「${positional[1] || ''}」。可用: ${listPresets().map((x) => x.id).join(' / ')}`);
+          console.log(PRESET_VIEW_RENDER(p));
+        } else {
+          throw new Error(`用法: stylotrace preset list|view <id>`);
+        }
+        break;
+      }
+      case 'mcp':
+        await runMcpServer(io);
+        break;
+      case 'setup':
+        await runSetup(flags);
+        break;
+      case 'credentials': {
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''), {
+          create: true,
+        });
+        const candidates = discoverCredentials(process.env);
+        if (flags.clear) {
+          clearCredentials(w);
+          console.log(`已清除工作区凭据 → ${credentialsFile(w)}`);
+          break;
+        }
+        if (flags.use) {
+          const idx = Number(flags.use) - 1;
+          const c = candidates[idx];
+          if (!c) throw new Error(`候选索引无效（1-${candidates.length}）`);
+          const file = saveCredentials(w, c);
+          console.log(`已采用 [${c.source}]（key ${redact(c.apiKey)}，${c.baseUrl}）→ ${file}`);
+          break;
+        }
+        if (flags.ask) {
+          if (!canPrompt('  stylotrace credentials --select <编号>   # 非交互：直接指定用哪一个')) break;
+          const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+          const ask = (q) => new Promise((resolve) => rl.question(q, resolve));
+          console.log('检测到的可用凭据:');
+          candidates.forEach((c, i) => console.log(`  ${i + 1}. ${describeCandidate(c)}`));
+          console.log(`  0. 手动输入 API key（用于 ${cfg.baseUrl}）`);
+          const ans = (await ask('选择编号或粘贴 key（回车跳过）: ')).trim();
+          rl.close();
+          if (/^\d+$/.test(ans)) {
+            const n = Number(ans);
+            if (n === 0) {
+              const key = (await ask('粘贴 API key: ')).trim();
+              if (!key) {
+                console.log('未输入，取消。');
+                break;
+              }
+              const file = saveCredentials(w, {
+                baseUrl: cfg.baseUrl,
+                apiKey: key,
+                model: cfg.model,
+                source: 'manual',
+              });
+              console.log(`已保存手动凭据（key ${redact(key)}）→ ${file}`);
+            } else {
+              const c = candidates[n - 1];
+              if (!c) throw new Error(`候选索引无效（1-${candidates.length}）`);
+              const file = saveCredentials(w, c);
+              console.log(`已采用 [${c.source}]（key ${redact(c.apiKey)}）→ ${file}`);
+            }
+          } else if (ans) {
+            const file = saveCredentials(w, {
+              baseUrl: cfg.baseUrl,
+              apiKey: ans,
+              model: cfg.model,
+              source: 'manual',
+            });
+            console.log(`已保存手动凭据（key ${redact(ans)}）→ ${file}`);
+          } else {
+            console.log('未保存（回车跳过）。');
+          }
+          break;
+        }
+        console.log(
+          `当前生效: ${cfg.credentialsSource ? cfg.credentialsSource : cfg.apiKey ? '显式 STYLOTRACE_LLM_API_KEY' : '（未配置）'}`,
+        );
+        if (!candidates.length) {
+          console.log('未发现宿主凭据。可配置 STYLOTRACE_LLM_API_KEY，或运行: stylotrace credentials --ask');
+        } else {
+          console.log(`检测到 ${candidates.length} 个可用凭据:`);
+          candidates.forEach((c, i) => console.log(`  ${i + 1}. ${describeCandidate(c)}`));
+          console.log('采用: stylotrace credentials --use <编号>；交互选择: --ask');
+        }
+        break;
+      }
+      case 'point-edit': {
+        const instruction = positional[1] || extractInstruction(positional[0] || '');
+        if (!positional[0] || !instruction)
+          throw new Error(
+            '用法: stylotrace point-edit "<引用/原文>" "<修改指令>" [--dir 项目] [--file 文件]\n或: stylotrace point-edit "〔Stylotrace 引用〕《原句》\\n修改指令：…"',
+          );
+        const r = await pointEdit(
+          cfg,
+          ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''), { create: true }),
+          {
+            quote: positional[0],
+            instruction,
+            dir: flags.dir,
+            file: flags.file,
+          },
+        );
+        console.log(`已定点修改: ${r.file}`);
+        console.log(`- ${r.quote}`);
+        console.log(`+ ${r.replacement}`);
+        console.log(`风格吸收: write ${r.writeUpdated} 维 + read ${r.readUpdated} 维`);
+        break;
+      }
+      case 'rewrite': {
+        const instruction = positional[1] || extractInstruction(positional[0] || '');
+        if (!positional[0] || !instruction)
+          throw new Error('用法: stylotrace rewrite "<引用/原文>" "<修改指令>" [--dir 项目] [--file 文件]');
+        const r = await rewriteVariants(
+          cfg,
+          ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''), { create: true }),
+          {
+            quote: positional[0],
+            instruction,
+            dir: flags.dir,
+            file: flags.file,
+          },
+        );
+        console.log(`「${r.quote.slice(0, 30)}」的 ${r.candidates.length} 个改写候选（未落盘）:`);
+        r.candidates.forEach((c, i) => console.log(`  ${i + 1}. ${c}`));
+        console.log('选定后用: stylotrace point-edit "<原句>" "<指令>" （同指令会重新生成；直接应用候选见 Web）');
+        break;
+      }
+      case 'roundtrip': {
+        // 文本在 positional[0]，工作区只认 --workspace，避免把文本当目录创建。
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''), { create: true });
+        const arg = String(positional[0] || '').trim();
+        let file = null;
+        if (flags.file) file = path.resolve(String(flags.file));
+        else if (arg) {
+          try {
+            if (fs.statSync(arg).isFile()) file = path.resolve(arg);
+          } catch {}
+        }
+        const text = file ? '' : arg;
+        const r = await roundtripCheck(cfg, w, { text, file });
+        console.log(renderRoundtrip(r));
+        break;
+      }
+      case 'probe': {
+        const text = flags.text || positional.join(' ');
+        if (!text) throw new Error('用法: stylotrace probe "<任务描述>" [--llm]');
+        const r = flags.llm ? await probeTaskLLM(cfg, text) : probeTask(text);
+        console.log(JSON.stringify(r, null, 2));
+        break;
+      }
+      case 'csl': {
+        const text = flags.text || positional.join(' ');
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''), { create: true });
+        if (!cfg.apiKey)
+          throw new Error('未配置 LLM 凭据：运行 stylotrace credentials --ask 选择/输入，或设置 STYLOTRACE_LLM_API_KEY');
+        // --provider / --model 在现有配置系统之上覆盖（不绕过 loadConfig 的凭据发现）
+        const llmCfg = { ...cfg };
+        if (flags.provider) llmCfg.provider = String(flags.provider);
+        if (flags.model) llmCfg.model = String(flags.model);
+        const llm = makeLlm(llmCfg);
+        const sessionId = flags.session || 'csl';
+        const renderResult = (r, debug = false) => {
+          const lines = [];
+          if (debug) {
+            const mode = r.kind === 'fast' ? 'fast' : r.kind === 'ask' ? 'fast(ask)' : r.kind === 'checkpoint' ? 'deep(checkpoint)' : r.kind === 'deep' ? 'deep' : 'error';
+            lines.push(`Mode: ${mode}`);
+            lines.push(`Score: ${r.salience?.p_deep ?? '-'}（reasons: ${(r.salience?.reasons || []).join(', ') || '无'}）`);
+            lines.push(`Action: ${r.actionTrace ? r.actionTrace.map((t) => t.action).join('→') : (r.kind === 'ask' ? 'askHuman' : r.kind)}`);
+            lines.push(`Provider: ${llmCfg.provider || 'openai'}`);
+            lines.push(`Model: ${llmCfg.model}`);
+            if (r.usage) {
+              lines.push(`Tokens: in=${r.usage.input_tokens ?? '-'} out=${r.usage.output_tokens ?? '-'} total=${r.usage.total_tokens ?? '-'}`);
+              lines.push(`Latency: ${((r.usage.latencyMs || 0) / 1000).toFixed(1)}s`);
+            }
+            lines.push(`State: v${r.state?.sVersion ?? '-'}`);
+            if (r.checkpoint) lines.push(`Checkpoint: ${r.checkpoint.question}`);
+            lines.push('---');
+          } else {
+            lines.push(`CSLA 运行: ${r.kind}（凭据 ${cfg.credentialsSource || '显式'} · ${llmCfg.model}）`);
+          }
+          if (r.kind === 'fast') {
+            lines.push(`快答: ${r.reply}`);
+          } else if (r.kind === 'ask') {
+            lines.push(`追问: ${r.question}`);
+            lines.push('（用 --answer "…" 回答后重跑，或进入 --interactive 继续）');
+          } else if (r.kind === 'checkpoint') {
+            lines.push(`检查点: ${r.question}`);
+            lines.push(`当前假设: ${(r.hypotheses || []).map((h) => (h.claim || h).slice(0, 40)).join(' | ') || '（无）'}`);
+          } else if (r.kind === 'deep') {
+            lines.push(`认知动作: ${r.actionTrace.map((t) => `${t.action}(${t.value})`).join(' → ')}`);
+            lines.push(`假设: ${(r.hypotheses || []).map((h) => h.claim).join(' | ') || '（无）'}`);
+            lines.push(`反例: ${(r.counterexamples || []).length}`);
+            lines.push(`Authority: α=${r.alpha} → ${r.jointAction.action}（候选 ${r.jointAction.candidates}）`);
+            lines.push(`回复: ${r.reply}`);
+          } else if (r.kind === 'error') {
+            lines.push(`错误: ${r.error}`);
+          }
+          return lines.join('\n');
+        };
+        if (flags.interactive) {
+          if (!canPrompt('  stylotrace csl "<输入>"   # 不带 --interactive 即单步执行')) break;
+          const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+          const lines = rl[Symbol.asyncIterator]();
+          console.log('CSLA 交互模式（输入 exit 退出）');
+          let awaitingAnswer = false;
+          let lastInput = '';
+          try {
+            while (true) {
+              process.stdout.write('你: ');
+              const { value, done } = await lines.next();
+              if (done) break;
+              const line = String(value || '').trim();
+              if (!line) continue;
+              if (/^(exit|quit|退出)$/i.test(line)) break;
+              let r;
+              if (awaitingAnswer) {
+                cslRuntime.acceptAnswer(w, null, line);
+                awaitingAnswer = false;
+                r = await cslRuntime.runTurn(w, { input: lastInput, llm, sessionId, forceDeep: Boolean(flags.deep) });
+              } else {
+                lastInput = line;
+                r = await cslRuntime.runTurn(w, { input: line, llm, sessionId, forceDeep: Boolean(flags.deep) });
+              }
+              console.log(`CSLA: ${renderResult(r, Boolean(flags.debug)).replace(/^CSLA 运行.*$/m, '').trim()}`);
+              if (r.kind === 'ask' || r.kind === 'checkpoint' || (r.kind === 'deep' && r.checkpoint?.needHumanInput)) awaitingAnswer = true;
+            }
+          } finally {
+            rl.close();
+          }
+          break;
+        }
+        if (!text)
+          throw new Error(
+            '用法: stylotrace csl "<输入>" [--workspace 工作区] [--session 会话] [--answer "…"] [--deep] [--interactive] [--debug] [--provider 提供商] [--model 模型] [--json]',
+          );
+        if (flags.answer) cslRuntime.acceptAnswer(w, null, String(flags.answer));
+        const r = await cslRuntime.runTurn(w, { input: text, llm, sessionId, forceDeep: Boolean(flags.deep) });
+        if (flags.json) {
+          console.log(JSON.stringify(r, null, 2));
+          break;
+        }
+        console.log(renderResult(r, Boolean(flags.debug)));
+        break;
+      }
+      case 'run': {
+        // Phase 3：CLI → Application Adapter → CSLA Runtime（统一认知入口）
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''), { create: true });
+        if (!cfg.apiKey)
+          throw new Error('未配置 LLM 凭据：运行 stylotrace credentials --ask 选择/输入，或设置 STYLOTRACE_LLM_API_KEY');
+        const llm = makeLlm(cfg);
+        const sessionId = flags.session || 'default';
+        const mode = flags.mode || 'auto';
+        const renderRun = (r) => {
+          const lines = [`运行: kind=${r.kind} · 认知动作=${r.cognitiveAction} · 应用=${r.app?.app}（${r.channel}）`];
+          if (r.blocked) lines.push(`Writer BLOCKED: ${r.writerGate?.reason} → next=${r.writerGate?.nextAction}`);
+          if (r.question) lines.push(`追问/检查点: ${r.question}`);
+          if (r.actionTrace?.length) lines.push(`动作轨迹: ${r.actionTrace.map((t) => t.action).join('→')}`);
+          lines.push(`状态: v${r.stateVersion} · coreIdea=${r.state?.coreIdea || '（未确认）'}`);
+          if (r.reply) lines.push(`回复: ${r.reply}`);
+          return lines.join('\n');
+        };
+        if (flags.interactive) {
+          if (!canPrompt('  stylotrace run "<输入>"   # 不带 --interactive 即单步执行')) break;
+          const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+          const lines = rl[Symbol.asyncIterator]();
+          console.log('CSLA run 交互模式（输入 exit 退出）');
+          try {
+            while (true) {
+              process.stdout.write('你: ');
+              const { value, done } = await lines.next();
+              if (done) break;
+              const line = String(value || '').trim();
+              if (!line) continue;
+              if (/^(exit|quit|退出)$/i.test(line)) break;
+              const r = await cslAdapter.runTask({ workspace: w, sessionId, input: line, channel: 'cli', mode, llm });
+              console.log(`CSLA: ${renderRun(r)}`);
+            }
+          } finally {
+            rl.close();
+          }
+          break;
+        }
+        const text = flags.text || positional.join(' ');
+        if (!text) throw new Error('用法: stylotrace run "<输入>" [--session 会话] [--mode auto|fast|deep] [--workspace 工作区] [--interactive] [--json]');
+        const r = await cslAdapter.runTask({ workspace: w, sessionId, input: text, channel: 'cli', mode, llm });
+        if (flags.json) {
+          console.log(JSON.stringify(r, null, 2));
+          break;
+        }
+        console.log(renderRun(r));
+        break;
+      }
+      case 'falsify': {
+        // 可证伪演示（PRISM 创新点五）：系统主动攻击自己，看违规是否真的被拦住
+        const F = await import('./csl/falsify.js');
+        const r = await F.runFalsification();
+        if (flags.json) {
+          console.log(JSON.stringify(r, null, 2));
+          break;
+        }
+        console.log(F.renderFalsification(r));
+        if (!r.allPass) process.exitCode = 1;
+        break;
+      }
+      case 'prism': {
+        // 棱镜三视图：原文 / 事实层 / 风格层；--restyle 只改说法（事实层锁定）
+        const P = await import('./csl/prism.js');
+        const text = flags.text || positional.join(' ');
+        if (!text) throw new Error('用法: stylotrace prism "<文本>" [--restyle] [--direction "更克制"] [--json]');
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || ''), { create: true });
+        const view = P.analyzePrism(w, text);
+        if (flags.json) {
+          console.log(JSON.stringify(view, null, 2));
+          break;
+        }
+        console.log(P.renderPrism(view));
+        if (flags.restyle) {
+          if (!cfg.apiKey) throw new Error('--restyle 需要 LLM 凭据');
+          const r = await P.restyleOnly({ text, llm: makeLlm(cfg), direction: flags.direction || '' });
+          console.log('\n【就地转换 · 只改说法（事实层锁定）】');
+          if (r.ok) {
+            console.log(r.restyled);
+            console.log(`\n✅ 事实层零改动（verdict=${r.guard.verdict}，尝试 ${r.attempts} 次）`);
+          } else {
+            console.log(`❌ 已拦截（${r.reason}）：模型试图改动事实层`);
+            for (const c of r.guard.factChanges.slice(0, 3)) {
+              console.log(`   · ${c.before} → ${c.after}（${c.evidence.join(',')}）`);
+            }
+            process.exitCode = 2;
+          }
+        }
+        break;
+      }
+      case 'capabilities': {
+        // 功能全景：把"真正可用"的能力列成一张表（CLI/Web/API 三端同一份事实）
+        const C = await import('./csl/capabilities.js');
+        const w = flags.workspace ? ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace)) : null;
+        const status = C.capabilityStatus(w, { sessionId: flags.session || 'default' });
+        if (flags.json) {
+          console.log(JSON.stringify({ capabilities: C.CAPABILITIES, status }, null, 2));
+          break;
+        }
+        console.log(C.renderCapabilities(status));
+        break;
+      }
+      default:
+        console.error(`[stylotrace] 未知命令: ${cmd}`);
+        console.error('[stylotrace] 提示：如果是新命令（如 web），先 git push 并运行更新器 bash ~/.codex/skills/stylotrace/scripts/update.sh，再重试。');
+        console.log(HELP);
+        process.exitCode = 1;
+    }
+  } catch (err) {
+    printError(err);
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runCli(process.argv.slice(2));
+}

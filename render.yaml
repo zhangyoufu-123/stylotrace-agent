@@ -1,0 +1,27 @@
+# Render Blueprint：Stylotrace Studio（web 服务，Docker 运行时，含 python3+python-docx）
+# 由 Render Codex 插件（render-blueprints / render-docker 技能）规范编写。
+services:
+  - type: web
+    name: stylotrace-studio
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: STYLOTRACE_WEB_DATA
+        value: /var/data
+      - key: STYLOTRACE_LLM_API_KEY
+        sync: false
+      - key: STYLOTRACE_WEB_PASSWORD
+        sync: false
+      - key: STYLOTRACE_LLM_BASE_URL
+        sync: false
+      - key: STYLOTRACE_LLM_MODEL
+        sync: false
+    disk:
+      name: stylotrace-data
+      mountPath: /var/data
+      sizeGB: 1

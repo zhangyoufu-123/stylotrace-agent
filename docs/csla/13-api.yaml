@@ -1,0 +1,273 @@
+openapi: 3.1.0
+info:
+  title: CSLA Cognitive Runtime API
+  version: 1.2.0
+  description: Provider-neutral API for experience-driven cognitive agents.
+servers:
+  - url: https://api.example.com
+security:
+  - bearerAuth: []
+paths:
+  /v1/agents:
+    post:
+      summary: Create an agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+  /v1/agents/{agent_id}/runs:
+    post:
+      summary: Run a cognitive task
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+  /v1/runs/{run_id}:
+    get:
+      summary: Get run status/result
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+  /v1/runs/{run_id}/events:
+    get:
+      summary: Stream normalized cognitive events
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Server-sent events
+  /v1/runs/{run_id}/trace:
+    get:
+      summary: Get auditable trace
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Trace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trace'
+  /v1/agents/{agent_id}/memory/search:
+    post:
+      summary: Search episodic/semantic memory
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemorySearchRequest'
+      responses:
+        '200':
+          description: Memory hits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemoryHit'
+  /v1/agents/{agent_id}/feedback:
+    post:
+      summary: Submit external outcome/feedback
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Feedback'
+      responses:
+        '202':
+          description: Accepted
+  /v1/agents/{agent_id}/replay:
+    post:
+      summary: Start offline replay
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '202':
+          description: Replay started
+  /v1/agents/{agent_id}/consolidate:
+    post:
+      summary: Start schema consolidation
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '202':
+          description: Consolidation started
+  /v1/tools:
+    post:
+      summary: Register a tool
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolSpec'
+      responses:
+        '201':
+          description: Tool registered
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    AgentId:
+      name: agent_id
+      in: path
+      required: true
+      schema: {type: string}
+    RunId:
+      name: run_id
+      in: path
+      required: true
+      schema: {type: string}
+  schemas:
+    AgentCreate:
+      type: object
+      required: [name, llm]
+      properties:
+        name: {type: string}
+        llm: {type: string}
+        memory: {type: string, default: default}
+        world_model: {type: string, default: latent}
+        policy: {type: string, default: default}
+        tools:
+          type: array
+          items: {type: string}
+        budget: {$ref: '#/components/schemas/Budget'}
+    Agent:
+      allOf:
+        - $ref: '#/components/schemas/AgentCreate'
+        - type: object
+          required: [id]
+          properties:
+            id: {type: string}
+    RunRequest:
+      type: object
+      required: [task]
+      properties:
+        task: {type: string}
+        context: {type: object, additionalProperties: true}
+        budget: {$ref: '#/components/schemas/Budget'}
+        approval_policy: {type: string}
+    Run:
+      type: object
+      required: [id, agent_id, status]
+      properties:
+        id: {type: string}
+        agent_id: {type: string}
+        status: {type: string, enum: [queued, running, waiting_approval, completed, failed, cancelled]}
+        result: {type: object, nullable: true, additionalProperties: true}
+        usage: {$ref: '#/components/schemas/Usage'}
+    Trace:
+      type: object
+      required: [run_id, events]
+      properties:
+        run_id: {type: string}
+        events:
+          type: array
+          items: {$ref: '#/components/schemas/CognitiveEvent'}
+    CognitiveEvent:
+      type: object
+      required: [event_type, event_id, session_id, step, state_version, timestamp]
+      properties:
+        event_type: {type: string}
+        event_id: {type: string}
+        session_id: {type: string}
+        step: {type: integer}
+        state_version: {type: string}
+        timestamp: {type: string, format: date-time}
+        goal: {type: object, additionalProperties: true}
+        observation: {type: object, additionalProperties: true}
+        action: {type: object, additionalProperties: true}
+        prediction: {type: object, additionalProperties: true}
+        outcome: {type: object, additionalProperties: true}
+        error: {type: object, additionalProperties: true}
+        uncertainty: {type: object, additionalProperties: true}
+        credit: {type: object, additionalProperties: true}
+        provenance: {type: object, additionalProperties: true}
+        cost: {type: object, additionalProperties: true}
+    MemorySearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: {type: string}
+        top_k: {type: integer, minimum: 1, maximum: 100, default: 10}
+        include_episodes: {type: boolean, default: true}
+        include_schemas: {type: boolean, default: true}
+    MemoryHit:
+      type: object
+      required: [id, score, kind]
+      properties:
+        id: {type: string}
+        score: {type: number}
+        kind: {type: string, enum: [episodic, semantic, schema]}
+        content: {type: object, additionalProperties: true}
+        provenance: {type: object, additionalProperties: true}
+    Feedback:
+      type: object
+      required: [run_id, outcome]
+      properties:
+        run_id: {type: string}
+        outcome: {type: object, additionalProperties: true}
+        reward: {type: number, nullable: true}
+        notes: {type: string, nullable: true}
+    ToolSpec:
+      type: object
+      required: [name, description, input_schema, output_schema, risk_level, side_effects]
+      properties:
+        name: {type: string}
+        description: {type: string}
+        input_schema: {type: object, additionalProperties: true}
+        output_schema: {type: object, additionalProperties: true}
+        risk_level: {type: string, enum: [none, low, medium, high, critical]}
+        cost: {type: number, minimum: 0}
+        side_effects: {type: string}
+    Budget:
+      type: object
+      properties:
+        max_tokens: {type: integer, minimum: 1}
+        max_tool_calls: {type: integer, minimum: 0}
+        max_reasoning_steps: {type: integer, minimum: 1}
+        max_world_rollouts: {type: integer, minimum: 0}
+        max_counterfactuals: {type: integer, minimum: 0}
+        max_cost_usd: {type: number, minimum: 0}
+    Usage:
+      type: object
+      properties:
+        input_tokens: {type: integer, minimum: 0}
+        output_tokens: {type: integer, minimum: 0}
+        tool_calls: {type: integer, minimum: 0}
+        latency_ms: {type: number, minimum: 0}
+        cost_usd: {type: number, minimum: 0}

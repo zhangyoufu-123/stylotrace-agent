@@ -1,0 +1,36 @@
+{
+  "name": "stylotrace",
+  "version": "1.0.0",
+  "description": "Stylotrace complete agent: standalone writing workflow CLI + point-edit + MCP server for host agents (Codex/Claude Code/OpenCode)",
+  "type": "module",
+  "bin": {
+    "stylotrace": "bin/stylotrace.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "templates",
+    "scripts/io",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhangyoufu-123/stylotrace"
+  },
+  "author": "Stylotrace Team",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node test/knowledge.test.mjs && node test/rag.test.mjs && node test/asset-academic-character.test.mjs && node test/persona-rag.test.mjs && node test/v23.test.mjs && node test/consistency.test.mjs && node test/thinking.test.mjs && node test/pointedit.test.mjs && node test/completion-guard.test.mjs && node test/fake-thinking.test.mjs && node test/academic-norm.test.mjs && node test/doc-pipeline.test.mjs && node test/experiment.test.mjs && node test/intent-lowwill.test.mjs && node test/guide.test.mjs && node test/explicit-search.test.mjs && node test/live-outline.test.mjs && node test/overflow-qa.test.mjs && node test/token-decode.test.mjs && node test/modulator.test.mjs && node test/embedding.test.mjs && node test/author-sheet.test.mjs && node test/stats.test.mjs && node test/roundtrip.test.mjs && node test/stylometry.test.mjs && node test/edit-transform.test.mjs && node test/concretize.test.mjs && node test/redteam.test.mjs && node test/director.test.mjs && node test/ingest-sample.test.mjs && node test/preset.test.mjs && node test/polish.test.mjs && node test/humanize.test.mjs && node test/cli-args.test.mjs && node test/synthesize.test.mjs && node test/credentials.test.mjs && node test/e2e.mjs && node test/llm-bridge.test.mjs && node test/csl-actions.test.mjs && node test/csl-runtime.test.mjs && node test/csl-hrmr.test.mjs && node test/csl-fastdeep.test.mjs && node test/csl-redteam-fixes.test.mjs && node test/csl-elicit.test.mjs && node test/csl-events.test.mjs && node test/csl-ledger.test.mjs && node test/csl-operators.test.mjs && node test/csl-replay.test.mjs && node test/csl-state.test.mjs && node test/csl-canonical.test.mjs && node test/csl-integration.test.mjs && node test/csl-kernel.test.mjs && node test/csl-credit.test.mjs && node test/csl-golden.test.mjs && node test/csl-brief.test.mjs && node test/csl-failure.test.mjs && node test/csl-e2e-closure.test.mjs && node test/csl-adapter.test.mjs && node test/csl-decision.test.mjs && node test/csl-falsify.test.mjs && node test/csl-prism.test.mjs && node test/csl-prism-leak.test.mjs && node test/ai-tells.test.mjs && node test/concurrency.test.mjs && node test/cli-fresh-install.test.mjs && node test/mcp-fresh.test.mjs && node test/quote-input.test.mjs && node test/csl-dualdiff-align.test.mjs && node test/csl-capabilities.test.mjs",
+    "test:csl-real": "node test/csl-real.test.mjs"
+  },
+  "license": "MIT",
+  "keywords": [
+    "writing",
+    "agent",
+    "mcp",
+    "style",
+    "chinese-writing"
+  ]
+}

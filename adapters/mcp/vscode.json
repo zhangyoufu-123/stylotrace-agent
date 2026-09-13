@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "stylotrace": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["$HOME/.codex/skills/stylotrace/scripts/engine/bin/stylotrace.js", "mcp"]
+    }
+  }
+}

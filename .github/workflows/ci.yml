@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Agent e2e（离线 mock）
+        run: cd agent && npm test
+      - name: 密钥泄露扫描（含全部历史）
+        run: bash scripts/scan-secrets.sh --all-refs
+      - name: Skill engine 与 agent 一致（防漂移）
+        run: bash scripts/sync-skill-engine.sh --check
+      - name: Skill 启动器可独立运行（内嵌引擎冒烟）
+        run: |
+          node skills/stylotrace/scripts/stylotrace.mjs --help | grep -q interview
+          node skills/stylotrace/scripts/stylotrace.mjs --help | grep -q redteam
+          node skills/stylotrace/scripts/stylotrace.mjs --help | grep -q 'mcp'
+      - name: Shell 语法
+        run: |
+          bash -n install.sh scripts/install-agent.sh scripts/sync-skill-engine.sh \
+            skills/stylotrace/scripts/install.sh skills/stylotrace/hooks/stylotrace-hook.sh
+      - name: SKILL frontmatter
+        run: |
+          head -5 skills/stylotrace/SKILL.md | grep -q '^name: stylotrace' && \
+          head -5 skills/stylotrace/SKILL.md | grep -q '^description:'

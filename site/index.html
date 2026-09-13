@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stylotrace — 会先读懂你、再替你写好的写作 Agent</title>
+  <meta name="description" content="Stylotrace：以作者建模为中心的深度协作写作 Agent。风格不是模仿，是提取；读过的书是写作的土壤。" />
+  <style>
+    :root {
+      --bg: #faf9f7;
+      --ink: #1d1a17;
+      --muted: #6b655c;
+      --accent: #b3472a;
+      --accent-soft: #f3e4dc;
+      --line: #e6e1d9;
+      --card: #ffffff;
+      --radius: 14px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.75;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+    header.site {
+      padding: 18px 0;
+      border-bottom: 1px solid var(--line);
+      background: rgba(250, 249, 247, 0.92);
+      backdrop-filter: blur(6px);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .nav { display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-weight: 700; font-size: 20px; letter-spacing: 0.5px; }
+    .logo span { color: var(--accent); }
+    .nav a { color: var(--muted); text-decoration: none; margin-left: 22px; font-size: 14px; }
+    .nav a:hover { color: var(--ink); }
+    .hero { padding: 96px 0 72px; text-align: center; }
+    .hero .eyebrow {
+      display: inline-block; font-size: 13px; color: var(--accent);
+      border: 1px solid var(--accent); border-radius: 999px; padding: 4px 14px; margin-bottom: 22px;
+    }
+    .hero h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.2; font-weight: 800; letter-spacing: -0.5px; }
+    .hero p.lead { margin: 22px auto 34px; max-width: 640px; font-size: 18px; color: var(--muted); }
+    .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-block; padding: 13px 26px; border-radius: 999px; text-decoration: none;
+      font-size: 15px; font-weight: 600; transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .btn.primary { background: var(--ink); color: #fff; }
+    .btn.primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(29,26,23,0.18); }
+    .btn.ghost { border: 1px solid var(--line); color: var(--ink); background: var(--card); }
+    .btn.ghost:hover { border-color: var(--ink); }
+    section { padding: 72px 0; }
+    section:nth-of-type(even) { background: #fff; }
+    h2 { font-size: clamp(26px, 4vw, 36px); font-weight: 800; margin-bottom: 14px; letter-spacing: -0.3px; }
+    .sub { color: var(--muted); max-width: 640px; margin-bottom: 40px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; }
+    .card h3 { font-size: 18px; margin-bottom: 10px; }
+    .card p { color: var(--muted); font-size: 14.5px; }
+    .card .num { color: var(--accent); font-weight: 800; font-size: 14px; letter-spacing: 1px; }
+    .flow { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
+    .flow .step {
+      background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+      padding: 9px 18px; font-size: 14px;
+    }
+    .flow .arrow { color: var(--muted); align-self: center; }
+    code {
+      background: #f1ede6; border-radius: 6px; padding: 2px 7px; font-size: 0.88em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    pre {
+      background: #211d19; color: #f3efe8; border-radius: var(--radius); padding: 22px 24px;
+      overflow-x: auto; font-size: 14px; line-height: 1.7; margin-top: 26px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    pre .c { color: #8d8578; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+    @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } .hero { padding: 64px 0 48px; } }
+    ul.docs { list-style: none; }
+    ul.docs li { border-bottom: 1px solid var(--line); padding: 13px 0; }
+    ul.docs a { color: var(--ink); text-decoration: none; font-weight: 600; }
+    ul.docs a:hover { color: var(--accent); }
+    ul.docs .d { color: var(--muted); font-size: 13.5px; display: block; }
+    footer { border-top: 1px solid var(--line); padding: 40px 0 60px; color: var(--muted); font-size: 14px; text-align: center; }
+    .badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
+    .badge { font-size: 12.5px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <div class="wrap nav">
+      <div class="logo">Stylotrace<span>.</span></div>
+      <nav>
+        <a href="#why">为什么</a>
+        <a href="#beliefs">理念</a>
+        <a href="#features">能力</a>
+        <a href="#flow">工作流</a>
+        <a href="#docs">文档</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero wrap">
+      <div class="eyebrow">写作子 agent · 装进 DSH / Codex / Claude Code / OpenCode · 开源</div>
+      <h1>给你的 AI Agent 装一个<br />会写、还会学你风格的写作子 agent。</h1>
+      <p class="lead">
+        大多数 AI 写作工具只做一件事：你把题目丢给它，它把文章吐给你，结果像模像样，却一眼假。
+        Stylotrace 换个思路——从你的每一次修改里学会你的文风，先读懂你，再动笔。
+      </p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/zhangyoufu-123/stylotrace" target="_blank" rel="noopener">GitHub 开源仓库</a>
+        <a class="btn ghost" href="#demo">30 秒看它怎么用</a>
+      </div>
+    </div>
+
+    <section id="demo" style="padding:48px 0;">
+      <div class="wrap">
+        <h2>30 秒用法</h2>
+        <p class="sub">装进你的 agent 后，你不需要写提示词——直接说，剩下的它自己推进。</p>
+        <pre><span class="c"># 在 Codex / DSH / Claude Code / OpenCode 新对话里直接说：</span>
+"帮我把这段周报改得像我写的，太官方了"
+
+<span class="c"># 它会：</span>
+1. 先读懂你的写作风格（从你贴过的旧稿 / 亲手改过的句子 / 每轮对话里学）
+2. 给你 3 个候选改写，并说清"为什么这么改"
+3. 你选一个，或再说一句"结尾再收一点"——它吸收进你的风格档案，越用越像你
+
+<span class="c"># 长文也一样：</span>
+"写一篇关于故乡的散文，要有我的风格" → 澄清 → 大纲 → 逐段写 → 反 AI 审计 → 交付导出</pre>
+      </div>
+    </section>
+
+    <section id="why">
+      <div class="wrap">
+        <h2>问题不在模型，在于它不认识你</h2>
+        <p class="sub">
+          通用 AI 写作的痛点是"千人一面、AI 腔明显"：结构工整、辞藻平滑，却没有人味。
+          它不知道你读过什么、在意什么、句子习惯怎么断、情绪习惯怎么收。它写的是"一篇好文章"，
+          而不是"你写的文章"。
+        </p>
+        <div class="cards">
+          <div class="card"><span class="num">01</span><h3>风格错配</h3><p>同一作者写散文是文学性的，写议论文是理性的——系统若用散文指纹生成议论文，必然失真。</p></div>
+          <div class="card"><span class="num">02</span><h3>素材伪门槛</h3><p>澄清时你已提供的案例与数据，没有被结构化传递到写作阶段，导致重复追问或"假大空"。</p></div>
+          <div class="card"><span class="num">03</span><h3>数据孤岛</h3><p>读过的书、写过的文、检索到的资料彼此隔离，无法共同支撑一篇文章。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="beliefs">
+      <div class="wrap">
+        <h2>我们相信的三件事</h2>
+        <p class="sub">这三条既是产品理念，也是研究论文里的理论框架。</p>
+        <div class="cards">
+          <div class="card">
+            <h3>一、风格不是模仿，是提取</h3>
+            <p>
+              我们把风格定义为：人天然的不规范表达，与完美表达之间的差异弥补。
+              这种差异不可预测、带着个人知识库里的无限联想，正是"人味"的来源。
+              Stylotrace 用四层复合风格向量持续追踪它——从你写过的文、读过的书、反复改过的地方里提取，
+              而不是套用某个名人的模板。
+            </p>
+          </div>
+          <div class="card">
+            <h3>二、读过的书，是写作的土壤</h3>
+            <p>
+              一个人的联想和理论，都来自他读过什么、经历过什么。Stylotrace 归纳式地收集你的知识：
+              你提到一本读过的书，它问一句"要我记进知识库吗"；你心里有模糊的想法，它主动递上一本
+              与你想法相近的书，说清"这个理论是什么、为什么适合你"。
+            </p>
+          </div>
+          <div class="card">
+            <h3>三、AI 该有自己的生态位</h3>
+            <p>
+              Stylotrace 只负责"写作"这一件事，但在这件事里它主导：问什么、何时写、缺什么数据，它自己决定。
+              需要查资料时自动排队请求，数据回灌后自动补写缺口；在编程、答疑、翻译上完全让位，不和其他 Agent 打架。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2>它能写什么</h2>
+        <p class="sub">不止"写一篇作文"——论文、公文、小说、长文系列，各有对的路径。</p>
+        <div class="cards">
+          <div class="card"><h3>议论文 / 散文 / 演讲稿</h3><p>澄清 → 大纲 → 双风格写作 → 审计 → 读者群像，全流程自动。</p></div>
+          <div class="card"><h3>学术论文</h3><p>自带论证链（已知→缺口→张力→洞见→方法→证据→局限），逐节论证完备性检查，自动参考文献草稿。</p></div>
+          <div class="card"><h3>公文 / 投标书 / 申报书</h3><p>25+ 种文体范式，党政机关公文按国标排版导出。</p></div>
+          <div class="card"><h3>小说 / 推理小说</h3><p>角色预演：为每个角色建档案，写前让角色自己决定会怎么想、怎么说、怎么做——故事像自己长出来的。</p></div>
+          <div class="card"><h3>长文 / 系列文</h3><p>交付时沉淀"文章圣经"（世界观/角色/时间线/伏笔），续写自动保持一致。</p></div>
+          <div class="card"><h3>任何文体</h3><p>扩写、缩写、润色、古文风、脱敏改写；版本回滚；导出 docx / pdf / html / 字幕。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="flow">
+      <div class="wrap">
+        <h2>用它写一篇东西，会发生什么</h2>
+        <p class="sub">全程你只回答该你决定的问题，其余它自己推进。</p>
+        <div class="flow">
+          <span class="step">你说一个念头</span><span class="arrow">→</span>
+          <span class="step">澄清 · 一次一问，风格/知识/素材同步采集</span><span class="arrow">→</span>
+          <span class="step">大纲 · 你确认后才写</span><span class="arrow">→</span>
+          <span class="step">逐节写作 · 带着"你的"风格肖像</span><span class="arrow">→</span>
+          <span class="step">复阅 · 偏题/衔接自查</span><span class="arrow">→</span>
+          <span class="step">反 AI 审计 · 套话/重复比喻自动修</span><span class="arrow">→</span>
+          <span class="step">8 位"第一读者"反馈</span><span class="arrow">→</span>
+          <span class="step">交付 · 归档 + 导出 Word</span>
+        </div>
+        <pre><span class="c"># 装进 Codex / Claude Code / OpenCode，一句话开始</span>
+curl -fsSL https://raw.githubusercontent.com/zhangyoufu-123/stylotrace/main/install.sh | bash -s -- --all
+
+<span class="c"># 然后在新对话里说：</span>
+"写一篇关于××的散文，要有我的风格"</pre>
+      </div>
+    </section>
+
+    <section id="research">
+      <div class="wrap grid2">
+        <div>
+          <h2>不是玩具，是研究</h2>
+          <p class="sub">
+            40 个自动化测试文件覆盖从澄清到交付的全链路（一次一问、实时大纲、字数达标、红队压测、
+            长文端到端、回译校验、全格式导出）；真实任务的红队审计能检出并自动修复重复比喻与句式复用，
+            交付前人类化指标（句长/段落/句首/词汇 TTR）把关。
+          </p>
+          <p class="sub">
+            配套研究给出"风格 = 作者相对中性基线的条件选择偏差"的模型、四层风格表征与实证实验；
+            改迹调制把作者的每次修改当作偏好标注，几十次修改即可学到稳定方向。
+          </p>
+        </div>
+        <div>
+          <h2>快速上手</h2>
+          <ul class="docs">
+            <li><a href="https://github.com/zhangyoufu-123/stylotrace/blob/main/docs/THEORY.md">理论架构</a><span class="d">Agent / 人工智能 / 数学 / 工程四维</span></li>
+            <li><a href="https://github.com/zhangyoufu-123/stylotrace/blob/main/docs/MODULATOR.md">外层调制器</a><span class="d">把签名升级为可学习模型</span></li>
+            <li><a href="https://github.com/zhangyoufu-123/stylotrace/blob/main/docs/GUIDE.md">使用手册</a><span class="d">安装、命令大全、协作协议、开发维护</span></li>
+            <li><a href="https://github.com/zhangyoufu-123/stylotrace/blob/main/adapters/README.md">跨宿主接入</a><span class="d">skill / MCP / CLI 配置片段</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="install" style="padding-top:0;">
+      <div class="wrap">
+        <h2>开箱即用</h2>
+        <p class="sub">未配置 API 密钥时自动读取宿主已配置的密钥；不覆盖你的稿子；密钥绝不打印。</p>
+        <pre><span class="c"># DeepSeek Harness 插件（43 个 MCP 写作工具）</span>
+dsh plugin --profile web add dsh-plugin-stylotrace
+
+<span class="c"># Codex / Claude Code / OpenCode / Cursor / Windsurf（skill + MCP + CLI）</span>
+curl -fsSL https://raw.githubusercontent.com/zhangyoufu-123/stylotrace/main/install.sh | bash -s -- --all</pre>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="logo" style="margin-bottom:12px;">Stylotrace<span>.</span></div>
+      <p>如果 AI 写作差了一口气，欢迎来一起把它补上。</p>
+      <div class="badges">
+        <span class="badge">零依赖引擎</span>
+        <span class="badge">40 测试文件</span>
+        <span class="badge">MIT License</span>
+        <span class="badge">插件 0.1.13</span>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

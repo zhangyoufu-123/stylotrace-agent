@@ -1,0 +1,35 @@
+{
+  "name": "stylotrace-agent",
+  "version": "1.0.0",
+  "description": "Stylotrace — 深度协作写作 Agent：从你的修改轨迹里学出你的文风。skill / MCP / CLI / Web，零依赖。",
+  "type": "module",
+  "bin": {
+    "stylotrace": "agent/bin/stylotrace.js"
+  },
+  "files": [
+    "agent",
+    "skills",
+    "install.sh",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "cd agent && npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhangyoufu-123/stylotrace-agent.git"
+  },
+  "keywords": [
+    "writing",
+    "agent",
+    "mcp",
+    "style",
+    "chinese-writing",
+    "ai-writing"
+  ],
+  "license": "MIT"
+}

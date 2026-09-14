@@ -154,12 +154,19 @@ window.__ModuleLoader__.load({
       }
 
       function findComposer() {
+        // DSH 0.1.5+ 的 composer 是 Lexical 驱动的 contenteditable div，带专用标记
+        // [data-composer-input]（不再是 textarea）。旧的 querySelector('textarea')
+        // 会命中页面上的其他 textarea —— 赋值成功却写错元素，表现为「点了改进、
+        // 弹已插入、输入框无变化」。按精确标记优先，再逐级放宽（兼容旧版 textarea composer）。
+        var ce = document.querySelector('[data-composer-input]')
+        if (ce) return ce
+        ce = document.querySelector('[data-input-scroll] [contenteditable="true"]')
+        if (ce) return ce
         var ae = document.activeElement
         if (ae && (ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return ae
         var ta = document.querySelector('textarea')
         if (ta) return ta
-        var ce = document.querySelector('[contenteditable="true"]')
-        return ce || null
+        return document.querySelector('[contenteditable="true"]') || null
       }
 
       function insertIntoComposer(composer, block) {
@@ -171,6 +178,21 @@ window.__ModuleLoader__.load({
           return true
         }
         if (composer.isContentEditable) {
+          // Lexical 受控表面：直接 appendChild 会被编辑器协调时清掉，必须走浏览器
+          // 原生插入路径（execCommand 触发 beforeinput/input，Lexical 才能捕获）。
+          try {
+            composer.focus()
+            var sel = window.getSelection()
+            if (sel) {
+              var range = document.createRange()
+              range.selectNodeContents(composer)
+              range.collapse(false)
+              sel.removeAllRanges()
+              sel.addRange(range)
+            }
+            var prefix = composer.textContent ? '\n\n' : ''
+            if (document.execCommand('insertText', false, prefix + block)) return true
+          } catch (e3) { /* 落到下面的节点兜底 */ }
           var node = document.createTextNode('\n\n' + block)
           composer.appendChild(node)
           composer.focus()

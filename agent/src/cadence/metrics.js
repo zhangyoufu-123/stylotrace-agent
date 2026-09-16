@@ -147,6 +147,14 @@ export function lengthSeriesStats(lengths) {
   }
   const q1 = quantile(xs, 0.25);
   const q3 = quantile(xs, 0.75);
+  // 不要用 Math.min(...xs)：长文本（几千个句读，正是"501 本小说"那种规模）
+  // 会把数组展开成几万个实参，直接 RangeError 爆栈（OpenCodeReview 审出来的真 bug）。
+  let lo = xs[0];
+  let hi = xs[0];
+  for (const v of xs) {
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
   const r2 = (v) => Number(v.toFixed(3));
   return {
     n: xs.length,
@@ -154,9 +162,9 @@ export function lengthSeriesStats(lengths) {
     median: r2(median(xs)),
     sd: r2(sd(xs)),
     cv: r2(cv(xs)),
-    min: Math.min(...xs),
-    max: Math.max(...xs),
-    range: Math.max(...xs) - Math.min(...xs),
+    min: lo,
+    max: hi,
+    range: hi - lo,
     iqr: r2(q3 - q1),
     skew: r2(skewness(xs)),
     mad: r2(mad(xs)),

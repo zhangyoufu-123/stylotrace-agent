@@ -108,7 +108,13 @@ function splitSentenceIntoGroups(sentence) {
   cuts.reverse();
 
   return cuts.map(([a, b]) => {
-    const text = clauses.slice(a, b + 1).map((c) => c.text).join('，');
+    // 从**原文切片**，不要用小句重新拼接。
+    // 原来写的是 clauses.slice(a,b+1).map(c=>c.text).join('，')，
+    // 遇到「他站着：没动、也没说话。」会变成「他站着，没动，也没说话。」——
+    // 等于改掉了作者的标点（OpenCodeReview 审出的真 bug）。
+    const from = clauses[a]?.start ?? 0;
+    const to = clauses[b]?.end ?? sentence.text.length;
+    const text = String(sentence.text).slice(from, to).trim();
     return { text, length: countUnits(text), clauseStart: a, clauseEnd: b };
   });
 }

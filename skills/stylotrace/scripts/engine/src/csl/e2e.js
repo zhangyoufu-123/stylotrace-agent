@@ -66,7 +66,11 @@ export async function runFullE2E(workspace, { llm = null, cfg = null, task = 'AI
   const askOk = c2.kind === 'ask' && !!c2.question;
   record('2 Clarify', 'Fast→AskHuman', c2.kind, askOk ? '写作被追问而非成稿' : '未追问', askOk, c2.question || '');
   rt.acceptAnswer(workspace, null, `问题是${task}太表面，我想写思想深度`);
-  record('2b Answer→State', 'coreIdea 入状态', st.readCanonicalState(workspace).coreIdea.slice(0, 20), '后续 deep 可见', true, 'acceptAnswer');
+  // 原来这里第 5 个参数写的是字面量 true——**没测量就报通过**。
+  // OpenCodeReview 审出来的：自称"自证电池"的脚手架不能有硬编码通过项。
+  const coreAfterAnswer = String(st.readCanonicalState(workspace).coreIdea || '');
+  const answerOk = coreAfterAnswer.length > 0;
+  record('2b Answer→State', 'coreIdea 入状态', coreAfterAnswer.slice(0, 20) || '（空）', answerOk ? '后续 deep 可见' : '核心未入状态', answerOk, 'acceptAnswer');
 
   // ── 3) Deep Reasoning：回答后进深层动作循环 ──
   const d3 = await rt.runTurn(workspace, { input: `我想写一篇关于${task}的文章`, llm: mockLlm });

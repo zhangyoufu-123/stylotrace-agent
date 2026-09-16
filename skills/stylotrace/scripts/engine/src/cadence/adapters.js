@@ -32,7 +32,24 @@ export function frozenSentenceIndexes(report, texts) {
   if (!texts.length) return [];
   const out = [];
   for (const s of report.sentence_level.segments || []) {
-    if (texts.some((t) => s.text.includes(t.text) || t.text.includes(s.text))) out.push([s.index, s.index]);
+    // 只允许**单向包含**：句读里含冻结句 → 该句被锁。
+    // 不能用对称 includes：那会把"只是冻结句子串"的正常句也锁上。
+    // 例：冻结句「今天天气很好，我出门散步」会让无关的「今天天气很好」也被锁
+    // （OpenCodeReview 审出来的真 bug）。
+    const hit = texts.some((t) => {
+      const frozen = String(t.text || '').trim();
+      if (!frozen) return false;
+      const sentence = String(s.text || '').trim();
+      // 句读本身就在冻结句里（被拆开的情况），或冻结句完整落在句读里
+      return sentence.includes(frozen) || frozen.includes(sentence);
+    });
+    if (!hit) continue;
+    // 只有"句读几乎等于冻结句"才算同一个；否则说明冻结句被拆到多句里，
+    // 这时把相关句读都锁上是对的，但长度差异过大时要排除（避免误锁短句）。
+    const frozenMax = Math.max(...texts.map((t) => String(t.text || '').trim().length));
+    const len = String(s.text || '').trim().length;
+    if (len < Math.min(6, frozenMax * 0.4)) continue;
+    out.push([s.index, s.index]);
   }
   return out;
 }

@@ -130,6 +130,13 @@ export function buildBrief(workspace, { sessionId = 'default' } = {}) {
 export function syncBrief(workspace, { sessionId = 'default' } = {}) {
   const next = buildBrief(workspace, { sessionId });
   const prev = readBrief(workspace);
+  // 继承"累计型"字段。buildBrief 每次都会造一个全新对象（editCount: 0、outcomeRefs: []），
+  // 而 syncBrief 会把它整份写回文件——不继承就等于**每次同步都把这些计数清零**。
+  // 这是 OpenCodeReview 审出来的真 bug（原话："buildBrief resets them instead of
+  // inheriting from prev"）：作者的修改次数与结果引用会莫名其妙归零。
+  next.editCount = prev.editCount || 0;
+  next.outcomeRefs = Array.isArray(prev.outcomeRefs) ? prev.outcomeRefs : [];
+  next.briefHash = hashOf(next);
   const changed = prev.briefHash !== next.briefHash;
   next.briefVersion = (prev.briefVersion || 0) + (changed ? 1 : 0);
   next.updatedAt = ws.nowIso();

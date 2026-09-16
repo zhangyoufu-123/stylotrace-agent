@@ -196,6 +196,11 @@ export function metricalReport(text, { standard = 'pingshui' } = {}) {
       pattern_name: matched?.pattern_name || null,
       // 每个位置一个符号：平/仄/？（未判定）。直接 join('unknown') 会变成一长串字母。
       instance_pattern: instance.map((t) => (t === 'unknown' ? '？' : t)).join(''),
+      // 内部用：保留 'unknown' 原值，供粘对/孤平/三平调判断。
+      // 上面的「？」只是给人看的占位符——**不能拿它去比平仄**，
+      // 否则「未判定」会被当成一个真实的声调参与比较，凭空判出失对/失粘
+      // （OpenCodeReview 审出来的真 bug）。
+      instance_raw: instance,
       deviations: devs,
       extra,
       rhyme_slot: i % 2 === 1,
@@ -208,7 +213,8 @@ export function metricalReport(text, { standard = 'pingshui' } = {}) {
   const warnings = [];
   if (knownTotal) {
     for (const l of lines) for (const e of l.extra || []) warnings.push(`${e.type === 'guping' ? '孤平' : '三平调'}：第 ${l.index} 句`);
-    const instances = lines.map((l) => l.instance_pattern.split(''));
+    // 用 instance_raw（含 'unknown'）而不是给人看的「？」占位符
+    const instances = lines.map((l) => l.instance_raw);
     for (const w of detectNianDui(instances)) warnings.push(`${w.detail}`);
   }
 

@@ -6,6 +6,26 @@
 const FACT_MARKS = /(\d{3,4}\s*年|\d+(\.\d+)?%|[\d０-９]+[万亿]?[人个座篇家所层米公里吨元]|研究表明|数据表明|统计|实验|调查|报告显示|调查显示)/;
 const CLAIM_VERBS = /(是|不是|并非|属于|导致|证明|表明|说明|意味着|必须|应当|不能|不可能|一定|必然|从未|总是|所有|任何)/;
 const NEGATION = /(不|没|无|未|别|非)/;
+
+/**
+ * 含"否定字"但不表否定的常用词。
+ *
+ * 这是 OpenCodeReview 审出来的真 bug：判否定极性时只要看到"不/无/非"就算一次否定，
+ * 于是把**正当的风格替换**误判成"改了事实"并拒绝交付：
+ *   非常 → 十分   被拒（"非"被当成否定）
+ *   无疑 → 肯定   被拒（"无"被当成否定）
+ *   无数 → 很多   被拒
+ * 实测 5 组常见替换里 3 组被误拒——和早先 A/B 实验里"中文改写 3/3 被拒"是同一类病。
+ * 做法：先剥掉这些"看着像否定、其实不是"的词，再判极性。
+ * 只收并列/副词/成语这类**明确不否定**的词；像"没有""不是"这种真否定一个都不收。
+ */
+const NON_NEGATING =
+  /(非常|非常规|无比|无疑|无论|无数|无非|无妨|无可奈何|无时无刻|非但|非凡|非议|不仅|不但|不管|不外乎|不失为|不无|不时|不约而同|不由自主|不知所措|不折不扣|迫不及待|无可厚非|不妨|不曾想|不由得)/g;
+
+/** 真正的否定极性判断：先剥掉非否定词，再看有没有否定字。 */
+function hasNegation(t) {
+  return NEGATION.test(String(t || '').replace(NON_NEGATING, ''));
+}
 const MODAL_STRONG = /(必然|一定|毫无疑问|肯定|绝对|从不|永远)/;
 const MODAL_WEAK = /(可能|也许|大概|似乎|或许|大概|倾向于|某种程度上|我猜|怀疑)/;
 const STYLE_CONNECT = /(而且|然而|因此|所以|此外|另外|不过|同时|于是|总之|综上|换言之|换句话说|首先|其次|最后)/;
@@ -84,7 +104,7 @@ export function classifyChange(before = '', after = '') {
   if (nums(b) !== nums(a)) factHits.push('number_changed');
   if (FACT_MARKS.test(b) || FACT_MARKS.test(a)) factHits.push('fact_marker');
   if (CLAIM_VERBS.test(b) !== CLAIM_VERBS.test(a)) factHits.push('claim_verb_shift');
-  if (NEGATION.test(b) !== NEGATION.test(a)) factHits.push('polarity_flip');
+  if (hasNegation(b) !== hasNegation(a)) factHits.push('polarity_flip');
   if (MODAL_WEAK.test(b) && MODAL_STRONG.test(a)) factHits.push('modal_strength_raise');
   if (MODAL_STRONG.test(b) && MODAL_WEAK.test(a)) factHits.push('modal_strength_lower');
 
@@ -197,21 +217,21 @@ function classifyRun(beforeRun, afterRun, fullBefore, fullAfter) {
     for (const t of new Set(a.match(FACT_TOKEN) || [])) {
       if (!String(fullBefore).includes(t)) factHits.push(`added_fact:${t}`);
     }
-    for (const t of new Set(a.match(NEG_TOKEN) || [])) {
+    for (const t of new Set(a.replace(NON_NEGATING, '').match(NEG_TOKEN) || [])) {
       if (!String(fullBefore).includes(t)) factHits.push(`added_polarity:${t}`);
     }
   } else if (!a) {
     for (const t of new Set(b.match(FACT_TOKEN) || [])) {
       if (!String(fullAfter).includes(t)) factHits.push(`dropped_fact:${t}`);
     }
-    for (const t of new Set(b.match(NEG_TOKEN) || [])) {
+    for (const t of new Set(b.replace(NON_NEGATING, '').match(NEG_TOKEN) || [])) {
       if (!String(fullAfter).includes(t)) factHits.push(`dropped_polarity:${t}`);
     }
   } else {
     // 双向都有的改写片段：数字必须逐一对上，极性/模态不许翻转
     const nums = (s) => (s.match(/\d+(\.\d+)?/g) || []).join(',');
     if (nums(b) !== nums(a)) factHits.push('number_changed');
-    if (NEGATION.test(b) !== NEGATION.test(a)) factHits.push('polarity_flip');
+    if (hasNegation(b) !== hasNegation(a)) factHits.push('polarity_flip');
     if (MODAL_WEAK.test(b) && MODAL_STRONG.test(a)) factHits.push('modal_strength_raise');
     if (MODAL_STRONG.test(b) && MODAL_WEAK.test(a)) factHits.push('modal_strength_lower');
   }

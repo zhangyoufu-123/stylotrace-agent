@@ -1,6 +1,14 @@
 // CSLA OutcomeLedger + BasicCredit（v1.0）
 // 结果账本：prediction → action → outcome → error → human feedback → credit。
 // Basic Credit（用户冻结：先 Explicit Counterfactual，不先做 learned）：
+//
+// ⚠️ LEGACY（2026-09 标注）：本模块**不在生产路径上**。
+//   生产用的是 csl/credit.js（runtime.js 直接 import 它）。两者功能重复：
+//   都有 recordOutcome 与 B0/B1/B2 信用基线。
+//   保留原因：3 个测试与 1 个实验脚本仍在引用它。
+//   正确处理：要么删除，要么把引用它的测试迁到 credit.js 后删除。
+//   在此之前，请勿在新功能里使用本模块。
+
 //   C(i,t,e|B) := L_future(do(i,t,e=B)) − L_future(real)
 //   MVP 实现：B0 冻结 / B1 替换 / B2 匹配替代的显式基线，误差启发式归因；
 //   不训练 neural credit estimator。

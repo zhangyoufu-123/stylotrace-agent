@@ -1440,9 +1440,9 @@ try {
   // Phase 3：新增 4 个 csl 统一认知工具（43 → 47）；CADENCE 新增 cadence_analyze（→ 49）
   const mcpNames = (byId[2]?.result?.tools || []).map((t) => t.name);
   check(
-    'MCP tools/list 49 个工具（含 csl_turn/csl_action/csl_checkpoint/csl_state/status_panel/cadence_analyze）',
-    byId[2]?.result?.tools?.length === 49 &&
-      ['csl_turn', 'csl_action', 'csl_checkpoint', 'csl_state', 'status_panel', 'cadence_analyze'].every((n) =>
+    'MCP tools/list 50 个工具（含 csl_turn/csl_action/csl_checkpoint/csl_state/status_panel/cadence_analyze/outcomes）',
+    byId[2]?.result?.tools?.length === 50 &&
+      ['csl_turn', 'csl_action', 'csl_checkpoint', 'csl_state', 'status_panel', 'cadence_analyze', 'outcomes'].every((n) =>
         mcpNames.includes(n),
       ),
   );

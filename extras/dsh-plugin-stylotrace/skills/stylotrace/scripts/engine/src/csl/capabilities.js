@@ -68,7 +68,7 @@ export const CAPABILITIES = [
     },
     status: 'live',
     evidence:
-      '零 API 调用；把"读起来喘不过气"归因到**气群边界错位**并给可解释建议；应用拆分后 CV/边界错位机械复核（cadence-* 测试 34 项）',
+      '零 API 调用；把"读起来喘不过气"归因到**气群边界错位**并给可解释建议；应用拆分后 CV/边界错位机械复核（cadence-* 4 个测试文件，分句 14 / 统计 8 / 闭环 12 / 集成 5）',
   },
   {
     id: 'dual-diff',
@@ -146,9 +146,9 @@ export const CAPABILITIES = [
     id: 'audit-trail',
     name: '可审计的 AI 使用记录',
     layer: '合规层',
-    entry: { cli: '（文件）', web: '（文件）', api: '（文件）' },
+    entry: { cli: 'stylotrace outcomes [--json]', web: '📋 状态面板 ⑦ 结果账本', api: 'GET /api/csl/panel' },
     status: 'live',
-    evidence: '事件账本 + 结果账本 + 决断卡，可逐条导出核查（满足比赛原创要求）',
+    evidence: '事件账本（状态面板）+ 结果账本（stylotrace outcomes / 状态面板 ⑦）+ 决断卡；三样都能读出来核查',
   },
   {
     id: 'sidecar',

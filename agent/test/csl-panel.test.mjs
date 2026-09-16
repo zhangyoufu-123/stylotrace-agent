@@ -1,4 +1,4 @@
-// 状态面板验收：自包含单文件（无外链）、七个板块齐全、能反映真实状态、可写盘。
+// 状态面板验收：自包含单文件（无外链）、八个板块齐全、能反映真实状态、可写盘。
 import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -20,7 +20,7 @@ dc.addDecision(w, { object: '门槛', comparisonSet: '乡愁散文', spanText: '
 const html = P.buildPanelHtml(w, { sessionId: 'default' });
 
 // 1) 七个板块齐全（这就是"能查看当前状态"的验收；④ 是 CADENCE 节奏卡）
-for (const section of ['① 认知状态', '② 学到的风格', '③ 写过的作品', '④ 节奏与气群', '⑤ 冻结的决断', '⑥ 最近事件', '⑦ 能力全景']) {
+for (const section of ['① 认知状态', '② 学到的风格', '③ 写过的作品', '④ 节奏与气群', '⑤ 冻结的决断', '⑥ 最近事件', '⑦ 结果账本', '⑧ 能力全景']) {
   assert.ok(html.includes(section), `面板应含板块：${section}`);
 }
 
@@ -47,4 +47,4 @@ const out = path.join(tmp, 'panel.html');
 const r = P.writePanel(w, { sessionId: 'default', out });
 assert.ok(fs.existsSync(out) && r.bytes > 500, `应写出面板文件：${r.bytes} 字节`);
 
-console.log('PASS csl-panel（自包含单文件 · 七板块 · 真实状态 · 可写盘）');
+console.log('PASS csl-panel（自包含单文件 · 八板块 · 真实状态 · 可写盘）');

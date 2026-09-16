@@ -65,6 +65,15 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { workspace: { type: 'string' } } },
   },
   {
+    name: 'outcomes',
+    description:
+      '结果账本（可审计）：读出"预测 → 实际 → 反事实归因"的完整记录，用于回答"哪些是我想的、哪些是 AI 帮的、哪一步走偏了"。',
+    inputSchema: {
+      type: 'object',
+      properties: { workspace: { type: 'string' }, sessionId: { type: 'string' } },
+    },
+  },
+  {
     name: 'panel',
     description: '渲染玻璃面板（当前写作进度白话视图）',
     inputSchema: {
@@ -700,6 +709,12 @@ async function callTool(name, args, cfg) {
       return {
         text: `工作区已初始化 → ${ws.ensureWorkspace(wsDir(args, cfg), { create: true })}`,
       };
+    case 'outcomes': {
+      const cr = await import('./csl/credit.js');
+      const w = ws.ensureWorkspace(wsDir(args, cfg), { create: true });
+      const all = cr.listOutcomes(w, { sessionId: args.sessionId || '' });
+      return { text: JSON.stringify({ count: all.length, file: cr.outcomeFile(w), outcomes: all.slice(-50) }, null, 2) };
+    }
     case 'panel': {
       const w = wsDir(args, cfg);
       ws.ensureWorkspace(w, { create: true });

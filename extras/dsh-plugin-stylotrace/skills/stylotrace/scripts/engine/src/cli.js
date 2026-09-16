@@ -278,6 +278,10 @@ const HELP = `Stylotrace Agent v0.23 — 完整写作 Agent（导演模式 · �
   stylotrace capabilities [--workspace 工作区] [--session 会话] [--json]
                                     功能全景：列出所有真实可用能力（澄清/提问策略/写作门/决断卡/
                                     棱镜/双色diff/自证/反锁死/记忆/检索/归因/审计），含入口与证据
+  stylotrace outcomes [--session 会话] [--json]
+                                    结果账本：预测 → 实际 → 反事实归因，可逐条导出核查
+  stylotrace cadence "<文本>" [--json|--ssml|--meter|--apply]
+                                    节奏与气群：气群图 / 反模式 / 呼吸建议 / 闭环比对 / 平仄 / SSML
                                      [--interactive] [--debug] [--provider 提供商] [--model 模型] [--json]
                                      CSLA 认知运行时（真实 LLM）：Fast/Deep 门控 + 动作循环 + Authority；
                                      --answer 回答追问后重跑进深层；--interactive 人机多轮；
@@ -305,7 +309,7 @@ const VALUE_FLAGS = new Set([
   'dir', 'direction', 'docx', 'engine', 'export', 'fear', 'file', 'format',
   'genre', 'hosts', 'html', 'lang', 'latex', 'md', 'memory', 'model', 'mood',
   'mode', 'note', 'out', 'pdf', 'project', 'provider', 'refresh', 'scene', 'secret', 'section',
-  'session', 'speech', 'srt', 'style', 'target', 'text', 'title', 'to', 'tone',
+  'session', 'source', 'speech', 'srt', 'style', 'target', 'text', 'title', 'to', 'tone',
   'topic', 'train', 'type', 'use', 'want', 'words', 'workspace', 'world',
   // 引用：--quote "被引用的原文" [--quote-kind text|question]
   'quote', 'quote-kind', 'input', 'standard',
@@ -318,7 +322,11 @@ export function parseArgs(argv) {
     const a = argv[i];
     if (a.startsWith('--')) {
       const key = a.slice(2);
-      const consumes = VALUE_FLAGS.has(key) && i + 1 < argv.length && !argv[i + 1].startsWith('--');
+      // 只有"长得像 flag"的下一个 token（-- 后紧跟字母）才不算取值：
+      // 否则 `--text "---\n前言…"` 这类以 -- 开头的正文会被误判成 flag，
+      // flags.text 变成布尔 true，正文被静默写成字符串 "true"。
+      const looksLikeFlag = (s) => /^--[A-Za-z]/.test(s);
+      const consumes = VALUE_FLAGS.has(key) && i + 1 < argv.length && !looksLikeFlag(argv[i + 1]);
       if (consumes) {
         flags[key] = argv[i + 1];
         i += 1;
@@ -1577,8 +1585,11 @@ export async function runCli(argv, io = {}) {
       }
       case 'absorb-sample': {
         // 用法: stylotrace absorb-sample "文段" [--author 鲁迅] [--source 出处] [--note 备注] [工作区]
-        const text = flags.text || positional[0] || '';
-        if (!text) throw new Error('用法: stylotrace absorb-sample "文段" [--author 作者] [--source 出处] [工作区]');
+        // 只认字符串：`--text` 后面跟了像 flag 的 token 时它是布尔 true，
+        // 落到磁盘会把样本正文写成 "true"（静默损坏），这里一律当缺参处理。
+        const text = typeof flags.text === 'string' ? flags.text : positional[0] || '';
+        if (typeof text !== 'string' || !text.trim())
+          throw new Error('用法: stylotrace absorb-sample "文段" [--author 作者] [--source 出处] [--note 备注] [工作区]');
         const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || positional[1] || ''), { create: true });
         const file = ws.absorbSample(w, text, { author: flags.author || '', source: flags.source || '', note: flags.note || '' });
         console.log(`已吸收文段进风格样本 → ${file}`);
@@ -1973,6 +1984,35 @@ export async function runCli(argv, io = {}) {
             process.exitCode = 2;
           }
         }
+        break;
+      }
+      case 'outcomes': {
+        // 结果账本：预测 vs 实际 + 反事实归因。
+        // 之前这份账本被 runtime 写进了磁盘，却**没有任何读取入口**——
+        // 能力清单里写着"可逐条导出核查"，实际用户根本看不到。补上这个缺口。
+        const cr = await import('./csl/credit.js');
+        const w = ws.ensureWorkspace(ws.resolveWorkspace(cfg, workspace), { create: true });
+        const all = cr.listOutcomes(w, { sessionId: String(flags.session || '') });
+        if (flags.json) { console.log(JSON.stringify(all, null, 2)); break; }
+        if (!all.length) {
+          console.log('结果账本：（空）');
+          console.log('它记录的是"预测 → 实际 → 反事实归因"，在你给出反馈后产生。');
+          console.log('怎么产生：stylotrace agent 里回答/纠正一次，或运行 stylotrace csl "…" --answer "…"');
+          console.log(`文件位置：${cr.outcomeFile(w)}`);
+          break;
+        }
+        console.log(`结果账本：${all.length} 条`);
+        for (const o of all.slice(-10)) {
+          const dims = o.evaluation?.dimensions || {};
+          const top = Object.entries(dims).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+          console.log(
+            `  · ${String(o.timestamp || '').slice(0, 19)} [${o.sessionId || '-'}] ` +
+            `预测 ${o.prediction?.expected ?? '—'} → 实际 ${o.actual?.value ?? '—'}` +
+            (top ? ` ｜ 主要偏差 ${top[0]} ${top[1]}` : ''),
+          );
+        }
+        if (all.length > 10) console.log(`  … 还有 ${all.length - 10} 条（--json 看全部）`);
+        console.log(`文件位置：${cr.outcomeFile(w)}`);
         break;
       }
       case 'cadence': {

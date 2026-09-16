@@ -1,6 +1,11 @@
 // FULL E2E PRODUCT VALIDATION 引擎（Gate B：Writing Closed 验证）
 // 13 步全链：Fast → Clarify → Deep → Memory → Search → CoreIdea → Writer → Revision → Outcome
 //         → Credit → PolicyUpdate → SecondTask → AuthorComparison
+//
+// ⚠️ TEST-ONLY（2026-09 标注）：本模块**不参与产品运行**，只有 csl-e2e-closure.test.mjs 引用它。
+//   它是 13 步全链的验证脚手架，不是运行时能力。
+//   能力清单里不要把"13 步闭环"当成产品功能说——它是测试，不是功能。
+
 // 输出：每步 EXPECTED vs ACTUAL vs BEHAVIORAL EFFECT + Closure + Cognitive Theater 检查 + Gate A/B/C 判定。
 import fs from 'node:fs';
 import path from 'node:path';

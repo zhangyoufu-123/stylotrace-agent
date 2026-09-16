@@ -1,4 +1,4 @@
 # Vendored from stylotrace repo (extras/dsh-plugin-stylotrace)
 # source: github.com/zhangyoufu-123/stylotrace
-# commit: b2c03f3706f2712c8ceb040a034c8f64df1b67cd
+# commit: ee821e47d50b502ce1d508271b6eacbf47e26e78
 # 重新生成: bash scripts/vendor.sh

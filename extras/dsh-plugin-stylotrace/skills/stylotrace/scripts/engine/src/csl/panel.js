@@ -65,8 +65,17 @@ export function collectPanel(workspace, { sessionId = 'default' } = {}) {
   const events = tailEvents(workspace);
   const actions = events.filter((e) => /action\.executed|cognitive\.run/.test(e.type || '')).slice(0, 5)
     .map((e) => (e.payload?.action ? `${e.payload.action}` : String(e.type)));
+  // 节奏体检数据（由 director 交付前写入 state.quality.rhythm）
+  let rhythm = { present: false };
+  try {
+    const stq = ws.readState(workspace) || {};
+    const r = stq.quality && stq.quality.rhythm;
+    if (r && !r.skipped) rhythm = { present: true, ...r };
+  } catch {}
+
   return {
     generatedAt: ws.nowIso(),
+    rhythm,
     sessionId,
     cognitive: {
       stateVersion: cs.stateVersion,
@@ -120,6 +129,52 @@ export function buildPanelHtml(workspace, { sessionId = 'default', title = 'Styl
     ? `<ul class="list">${p.works.map((w) => `<li><b>${esc(w.title)}</b>${w.category ? ` <span class="chip">${esc(w.category)}</span>` : ''}${w.at ? ` <span class="muted">${esc(String(w.at).slice(0, 10))}</span>` : ''}</li>`).join('')}</ul>`
     : '<p class="muted">还没有归档作品。</p>';
 
+  // 结果账本（预测 → 实际 → 反事实归因）。
+  // 之前它只被 runtime 写进磁盘、没有任何读取入口——能力清单却写着"可逐条导出核查"，
+  // 等于写了盘读不出来。这里补上：面板同步读一次（collectPanel 是同步函数，不能 await）。
+  let outcomesBody = '<p class="muted">还没有结果记录。给出一次反馈后产生。</p>';
+  try {
+    const raw = fs.readFileSync(path.join(workspace, 'protocol', 'csl-outcomes.jsonl'), 'utf8');
+    const list = raw
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => {
+        try {
+          return JSON.parse(l);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    if (list.length) {
+      outcomesBody =
+        list
+          .slice(-6)
+          .map((o) => {
+            const dims = o.evaluation?.dimensions || {};
+            const top = Object.entries(dims).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+            return (
+              `<div class="kv"><span class="k">${esc(String(o.timestamp || '').slice(5, 16))}</span>` +
+              `<span class="v">预测 ${esc(String(o.prediction?.expected ?? '—'))} → 实际 ` +
+              `${esc(String(o.actual?.value ?? '—'))}${top ? ` ｜ ${esc(top[0])} ${esc(String(top[1]))}` : ''}</span></div>`
+            );
+          })
+          .join('') + `<p class="muted">共 ${list.length} 条 · 运行 stylotrace outcomes 看全部</p>`;
+    }
+  } catch {}
+
+  const rq = p.rhythm || {};
+  const rhythmBody = rq.present
+    ? [
+        kv('上次成稿 CV', String(rq.cv ?? '—')),
+        kv('气群 / 句读', `${rq.breathGroups ?? '—'} / ${rq.sentences ?? '—'}`),
+        kv('边界错位', String(rq.misalignments ?? '—')),
+        kv('基线来源', rq.baselineSource === 'author' ? `你自己（${rq.authorCorpus} 篇）` : rq.baselineSource || '—'),
+        rq.deviation ? kv('相对你自己', rq.deviation) : '',
+        rq.baselineNote ? `<p class="muted">${esc(rq.baselineNote)}</p>` : '',
+      ].join('')
+    : '<p class="muted">还没有节奏体检记录。写完成稿后自动生成（零 API 调用）。</p>';
+
   const decBody = p.decisions.length
     ? `<ul class="list">${p.decisions.map((d) => `<li><b class="frozen">🔒 ${esc(d.spanText)}</b><div class="muted">对象：${esc(d.object || '—')} ｜ 比较集：${esc(d.comparisonSet || '—')}</div></li>`).join('')}</ul>`
     : '<p class="muted">还没有冻结的决断。冻结后的句子，AI 不能改写。</p>';
@@ -165,10 +220,12 @@ export function buildPanelHtml(workspace, { sessionId = 'default', title = 'Styl
 <div class="grid">
   ${card('① 认知状态', cogBody, 'cog')}
   ${card('② 学到的风格', styleBody, 'style')}
-  ${card('③ 写过的作品', worksBody)}
-  ${card('④ 冻结的决断（AI 不能改）', decBody, 'dec')}
-  ${card('⑤ 最近事件（可审计）', evBody)}
-  ${card('⑥ 能力全景', `<p class="muted">真实可用 ${p.capabilities.live}/${p.capabilities.total}。运行 <code>stylotrace capabilities</code> 或 <code>stylotrace falsify</code> 查看全部与自证结果。</p>`, 'cap')}
+      ${card('③ 写过的作品', worksBody)}
+      ${card('④ 节奏与气群 · CADENCE', rhythmBody, 'rhythm')}
+      ${card('⑤ 冻结的决断（AI 不能改）', decBody, 'dec')}
+      ${card('⑥ 最近事件（可审计）', evBody)}
+      ${card('⑦ 结果账本（可审计）', outcomesBody, 'out')}
+      ${card('⑧ 能力全景', `<p class="muted">真实可用 ${p.capabilities.live}/${p.capabilities.total}。运行 <code>stylotrace capabilities</code> 或 <code>stylotrace falsify</code> 查看全部与自证结果。</p>`, 'cap')}
 </div>
 <footer>由 Stylotrace 生成（自包含单文件，可直接放进 IDE / 浏览器查看；无外链、无脚本依赖）。</footer>
 </body></html>`;

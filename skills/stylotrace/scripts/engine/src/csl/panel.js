@@ -129,7 +129,40 @@ export function buildPanelHtml(workspace, { sessionId = 'default', title = 'Styl
     ? `<ul class="list">${p.works.map((w) => `<li><b>${esc(w.title)}</b>${w.category ? ` <span class="chip">${esc(w.category)}</span>` : ''}${w.at ? ` <span class="muted">${esc(String(w.at).slice(0, 10))}</span>` : ''}</li>`).join('')}</ul>`
     : '<p class="muted">还没有归档作品。</p>';
 
-  // 节奏卡：让作者一眼看到"系统从你写过的多少篇里学出了你自己的节奏"
+  // 结果账本（预测 → 实际 → 反事实归因）。
+  // 之前它只被 runtime 写进磁盘、没有任何读取入口——能力清单却写着"可逐条导出核查"，
+  // 等于写了盘读不出来。这里补上：面板同步读一次（collectPanel 是同步函数，不能 await）。
+  let outcomesBody = '<p class="muted">还没有结果记录。给出一次反馈后产生。</p>';
+  try {
+    const raw = fs.readFileSync(path.join(workspace, 'protocol', 'csl-outcomes.jsonl'), 'utf8');
+    const list = raw
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => {
+        try {
+          return JSON.parse(l);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    if (list.length) {
+      outcomesBody =
+        list
+          .slice(-6)
+          .map((o) => {
+            const dims = o.evaluation?.dimensions || {};
+            const top = Object.entries(dims).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+            return (
+              `<div class="kv"><span class="k">${esc(String(o.timestamp || '').slice(5, 16))}</span>` +
+              `<span class="v">预测 ${esc(String(o.prediction?.expected ?? '—'))} → 实际 ` +
+              `${esc(String(o.actual?.value ?? '—'))}${top ? ` ｜ ${esc(top[0])} ${esc(String(top[1]))}` : ''}</span></div>`
+            );
+          })
+          .join('') + `<p class="muted">共 ${list.length} 条 · 运行 stylotrace outcomes 看全部</p>`;
+    }
+  } catch {}
+
   const rq = p.rhythm || {};
   const rhythmBody = rq.present
     ? [
@@ -191,7 +224,8 @@ export function buildPanelHtml(workspace, { sessionId = 'default', title = 'Styl
       ${card('④ 节奏与气群 · CADENCE', rhythmBody, 'rhythm')}
       ${card('⑤ 冻结的决断（AI 不能改）', decBody, 'dec')}
       ${card('⑥ 最近事件（可审计）', evBody)}
-      ${card('⑦ 能力全景', `<p class="muted">真实可用 ${p.capabilities.live}/${p.capabilities.total}。运行 <code>stylotrace capabilities</code> 或 <code>stylotrace falsify</code> 查看全部与自证结果。</p>`, 'cap')}
+      ${card('⑦ 结果账本（可审计）', outcomesBody, 'out')}
+      ${card('⑧ 能力全景', `<p class="muted">真实可用 ${p.capabilities.live}/${p.capabilities.total}。运行 <code>stylotrace capabilities</code> 或 <code>stylotrace falsify</code> 查看全部与自证结果。</p>`, 'cap')}
 </div>
 <footer>由 Stylotrace 生成（自包含单文件，可直接放进 IDE / 浏览器查看；无外链、无脚本依赖）。</footer>
 </body></html>`;

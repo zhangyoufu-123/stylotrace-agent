@@ -30,6 +30,7 @@ git clone -q "https://github.com/${PUBLIC_REPO}.git" "$TMP/pub"
 rsync -a --delete \
   --exclude '.git' \
   --exclude 'docs/competition' \
+  --exclude 'docs/论文' \
   --exclude 'docs/legacy' \
   --exclude 'docs/experiments' \
   --exclude '.codex' \

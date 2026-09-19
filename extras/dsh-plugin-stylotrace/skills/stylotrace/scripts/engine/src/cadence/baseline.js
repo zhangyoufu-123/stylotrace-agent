@@ -11,6 +11,7 @@ import path from 'node:path';
 import { lengthSeriesStats } from './metrics.js';
 import { segment } from './segment.js';
 import { collectAuthorCorpus, deviationFromAuthor } from './author-corpus.js';
+import { writeFileAtomic as atomicWrite } from '../workspace.js';
 
 const MIN_SAMPLES = 5;
 
@@ -28,26 +29,27 @@ function baselineFile(workspace) {
  * **样本来自 agent 自己收集的作者内容**（归档作品 / 作者亲手改后的文本 / 当前成稿），
  * 不去外面找文章。工作区里写得越多，基线越准；不够就诚实标 insufficient。
  */
-export function readBaseline({ workspace = null, authorId = null, genre = null } = {}) {
+export function readBaseline({ workspace = null, authorId = null, genre = null, corpus = null } = {}) {
   // 首选：作者语料（agent 自有数据）
   if (workspace) {
     try {
-      const corpus = collectAuthorCorpus(workspace, { includeDraft: false });
-      if (corpus.stats.pieces >= MIN_SAMPLES) {
+      // corpus 可由调用方传入（analyze 已经采过一次），没传才自己采
+      const c = corpus || collectAuthorCorpus(workspace, { includeDraft: false });
+      if (c.stats.pieces >= MIN_SAMPLES) {
         return {
           source: 'author',
           author_id: authorId,
-          samples: corpus.stats.pieces,
-          cv: corpus.stats.cv,
-          mean: corpus.stats.mean,
-          mad: corpus.stats.mad,
-          cvRange: corpus.stats.cvRange,
-          bySource: corpus.bySource,
-          shortSamples: corpus.stats.shortSamples,
+          samples: c.stats.pieces,
+          cv: c.stats.cv,
+          mean: c.stats.mean,
+          mad: c.stats.mad,
+          cvRange: c.stats.cvRange,
+          bySource: c.bySource,
+          shortSamples: c.stats.shortSamples,
           note:
-            `来自你自己归档的 ${corpus.stats.pieces} 篇（作品库 ${corpus.bySource.library || 0} · 修改轨迹 ${corpus.bySource.edit || 0}）` +
-            (corpus.stats.shortSamples
-              ? `，其中 ${corpus.stats.shortSamples} 篇偏短（<8 句读），CV 波动会大一些`
+            `来自你自己归档的 ${c.stats.pieces} 篇（作品库 ${c.bySource.library || 0} · 修改轨迹 ${c.bySource.edit || 0}）` +
+            (c.stats.shortSamples
+              ? `，其中 ${c.stats.shortSamples} 篇偏短（<8 句读），CV 波动会大一些`
               : ''),
         };
       }
@@ -76,8 +78,8 @@ export function readBaseline({ workspace = null, authorId = null, genre = null }
     return { source: 'genre', genre, ...GENRE_BASELINES[genre] };
   }
   // 拿到语料但不够 5 篇：把"攒了多少"如实告诉用户，而不是一句"样本不足"
-  let partial = null;
-  if (workspace) {
+  let partial = corpus ? corpus.stats : null;
+  if (!partial && workspace) {
     try {
       const c = collectAuthorCorpus(workspace, { includeDraft: false });
       partial = c.stats;
@@ -110,7 +112,8 @@ export function writeBaseline(workspace, text, { authorId = null } = {}) {
   raw.samples.push({ cv: st.cv, mean: st.mean, sd: st.sd, n: st.n, ts: new Date().toISOString() });
   if (raw.samples.length > 200) raw.samples = raw.samples.slice(-200);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(raw, null, 2) + '\n', { mode: 0o600 });
+  // 原子写：并发或崩溃时不会留下半截基线文件
+  atomicWrite(file, JSON.stringify(raw, null, 2) + '\n', { mode: 0o600 });
   return { ok: true, samples: raw.samples.length };
 }
 

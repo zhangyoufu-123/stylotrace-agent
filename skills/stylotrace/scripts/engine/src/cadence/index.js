@@ -10,7 +10,7 @@
 //   契约带 schema_version · 默认旁路 shadow mode · 特性开关逐项接管
 //   rhythm_audit / rhythm_suggest / prosody_ssml / metrical_check
 
-import { COUNTING_NOTES, countUnits, segment } from './segment.js';
+import { COUNTING_NOTES, segment } from './segment.js';
 import { lengthSeriesStats } from './metrics.js';
 import { boundaryMisalignments, breathGroups } from './breath.js';
 import { detectAntipatterns } from './antipattern.js';
@@ -19,8 +19,6 @@ import { applyToText } from './apply.js';
 import { readBaseline, deviationFromAuthor } from './baseline.js';
 import { collectAuthorCorpus } from './author-corpus.js';
 import { frozenSentenceIndexes, lockedSpansFromDecisions } from './adapters.js';
-import { metricalReport } from './meter.js';
-import { toSsml } from './ssml.js';
 
 export const SCHEMA_VERSION = '1.0';
 
@@ -54,8 +52,11 @@ export function analyze(text, { authorId = null, workspace = null, standard = nu
 
   // 冷启动与短文本纪律（规格 §6.3）：句读 < 8 → 明确拒绝判定
   // 基线样本来自 agent 自己收集的作者内容，不去外面找文章
-  const baseline = readBaseline({ workspace, authorId, genre: null });
+  // 作者语料只采集一次，既给基线也给偏离判断用。
+  // 原来 readBaseline 内部采集两次、analyze 又采集第三次——同样的文件读三遍
+  // （OpenCodeReview 审出来的）。
   const corpus = workspace ? collectAuthorCorpus(workspace, { includeDraft: false }) : null;
+  const baseline = readBaseline({ workspace, authorId, genre: null, corpus });
   const deviation = corpus ? deviationFromAuthor(corpus, stats.cv) : { ok: false, source: 'insufficient' };
   const insufficient = sentences.length < 8;
   const verdict = insufficient ? 'insufficient' : 'ok';
@@ -128,8 +129,11 @@ export function suggest(report, { lockedSpans = [], targetSpans = null, workspac
   const out = buildSuggestions(report, { lockedSpans: merged, targetSpans });
   return out.map((s) => ({
     ...s,
-    // 让调用方看得见"这条建议没有覆盖作者的冻结句"
-    frozen_protected: lockIdx.length > 0,
+    // 逐条判断"这条建议有没有碰到作者的冻结句"。
+    // 原来是全文档布尔值（只要存在任何冻结句，所有建议都被标成 true），
+    // 调用方渲染时会把不相关的建议也标成"受保护"，等于这句标记没信息量
+    // （OpenCodeReview 审出来的）。
+    frozen_protected: merged.some(([a, b]) => s.span.start <= b && s.span.end >= a),
   }));
 }
 

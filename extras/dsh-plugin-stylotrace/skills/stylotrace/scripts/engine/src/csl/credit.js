@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import * as st from './state.js';
+import { writeFileAtomic } from '../workspace.js';
 
 const OUTCOME_FILE = 'protocol/csl-outcomes.jsonl';
 const CREDIT_FILE = 'protocol/csl-credits.jsonl';
@@ -239,7 +240,7 @@ export function applyCredit(workspace, { credits, context = {}, eta = 0.3, trace
   }
   ev.version += 1;
   fs.mkdirSync(path.dirname(policyEvidenceFile(workspace)), { recursive: true });
-  fs.writeFileSync(policyEvidenceFile(workspace), JSON.stringify(ev, null, 2) + '\n');
+  writeFileAtomic(policyEvidenceFile(workspace), JSON.stringify(ev, null, 2) + '\n');
   // Canonical 状态：policy 分区只存证据版本引用，不塞全部历史（防 state 膨胀）
   st.commit(workspace, {
     delta: { policy: { evidenceVersion: ev.version }, credits: [ev.version] },
@@ -272,7 +273,7 @@ export function invalidateCredit(workspace, { creditId, sessionId = 'default', t
       item.updatedAt = nowIso();
       ev.items[key] = item;
       ev.version += 1;
-      fs.writeFileSync(policyEvidenceFile(workspace), JSON.stringify(ev, null, 2) + '\n');
+      writeFileAtomic(policyEvidenceFile(workspace), JSON.stringify(ev, null, 2) + '\n');
       restored = { target: target.target, before, after: item.appliedQ };
       st.commit(workspace, {
         delta: { policy: { evidenceVersion: ev.version } },
@@ -284,7 +285,7 @@ export function invalidateCredit(workspace, { creditId, sessionId = 'default', t
     }
   }
   // 重写 credit store（标记 invalidated）
-  fs.writeFileSync(creditFile(workspace), all.map((c) => JSON.stringify(c)).join('\n') + '\n');
+  writeFileAtomic(creditFile(workspace), all.map((c) => JSON.stringify(c)).join('\n') + '\n');
   return { invalidated: true, restored };
 }
 

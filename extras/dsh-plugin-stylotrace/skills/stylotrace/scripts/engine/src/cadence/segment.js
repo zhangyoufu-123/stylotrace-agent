@@ -11,7 +11,14 @@
 // 终结标点（句读边界）。省略号按"一个终结标点"处理。
 const SENTENCE_END = /[。！？；…!?;]/;
 // 英文缩写：Mr. / Dr. / etc. / a.m. 以及首字母缩写 J. K.
-const ABBREV = /(?:^|[^A-Za-z])(Mr|Mrs|Ms|Dr|Prof|St|Jr|Sr|vs|etc|e\.g|i\.e|a\.m|p\.m|No)\.$/i;
+//
+// ⚠️ 这里**不能带 /i**（OpenCodeReview 审出来的真 bug）：
+// 带 /i 时小写普通词也会命中——"No. I disagree." 和 "He is a prof. She left."
+// 都被当成缩写、拒不切句，实测两句合一。所以：
+//   · 大小写敏感（Mr 不是 mr）
+//   · "No" 只在大写且后接数字时才算缩写（No. 5），避免吞掉 "No. I disagree."
+const ABBREV = /(?:^|[^A-Za-z])(Mr|Mrs|Ms|Dr|Prof|St|Jr|Sr|vs|etc|e\.g|i\.e|a\.m|p\.m)\.$/;
+const ABBREV_NO_NUMBER = /(?:^|[^A-Za-z])No\.$/; // 后面接数字才算缩写，见 splitSentences
 // 小句边界
 const CLAUSE_SEP = /[，、：:,—]/;
 // 成对符号：其内部的标点不单独成句
@@ -133,7 +140,12 @@ export function splitSentences(text) {
       const prev = t[i - 1] || '';
       const next = t[i + 1] || '';
       const isDecimal = /\d/.test(prev) && /\d/.test(next);
-      const isAbbrev = ABBREV.test(cur.trim()) || (/^[A-Z]$/.test(prev) && /^[A-Z]/.test(next.trim()));
+      // "No." 只有后接数字时才是缩写（No. 5），否则是句子（No. I disagree.）
+      const isNoAbbrev = ABBREV_NO_NUMBER.test(cur.trim()) && /^\s*\d/.test(next);
+      const isAbbrev =
+        ABBREV.test(cur.trim()) ||
+        isNoAbbrev ||
+        (/^[A-Z]$/.test(prev) && /^[A-Z]/.test(next.trim())); // 首字母缩写 J. K.
       if (isDecimal || isAbbrev) continue;
       // 视为句末：走下面的终结逻辑
       let j = i + 1;
@@ -176,9 +188,21 @@ export function splitSentences(text) {
 
 /** 小句切分（用于气群候选边界），返回每句内的小句数组。 */
 export function splitClauses(sentence) {
+  return splitClausesWithOffsets(sentence).map((c) => c.text);
+}
+
+/**
+ * 小句切分并带上在原文中的位置。
+ *
+ * 为什么要带位置：气群文本必须**从原文切片**得到，不能把小句用固定分隔符重新拼起来
+ * ——原文可能是「他站着：没动、也没说话。」，用「，」重拼会变成
+ * 「他站着，没动，也没说话。」，等于改了作者的标点（OpenCodeReview 审出的真 bug）。
+ */
+export function splitClausesWithOffsets(sentence) {
   const t = normalize(String(sentence || ''));
   const parts = [];
   let cur = '';
+  let startAt = 0;
   const stack = [];
   for (let i = 0; i < t.length; i += 1) {
     const c = t[i];
@@ -186,15 +210,16 @@ export function splitClauses(sentence) {
     else if (CLOSERS.has(c) && stack.length && stack[stack.length - 1] === c) stack.pop();
     if (!stack.length && CLAUSE_SEP.test(c)) {
       const body = cur.trim();
-      if (body) parts.push(body);
+      if (body) parts.push({ text: body, start: startAt, end: i });
       cur = '';
+      startAt = i + 1;
       continue;
     }
     cur += c;
   }
   const tail = cur.trim();
-  if (tail) parts.push(tail);
-  return parts.length ? parts : [t];
+  if (tail) parts.push({ text: tail, start: startAt, end: t.length });
+  return parts.length ? parts : [{ text: t, start: 0, end: t.length }];
 }
 
 /** 句读 + 小句一次拿全，供气群划分使用。 */
@@ -204,7 +229,7 @@ export function segment(text) {
     index: i + 1,
     text: s,
     length: countUnits(s),
-    clauses: splitClauses(s).map((c) => ({ text: c, length: countUnits(c) })),
+    clauses: splitClausesWithOffsets(s).map((c) => ({ ...c, length: countUnits(c.text) })),
   }));
 }
 

@@ -89,42 +89,13 @@ export function charDiff(before, after) {
 }
 
 /**
- * 判定一个变化块属于哪一层。
- * 事实层优先：出现数字/年份/断言词/否定极性变化/模态强度越级 → fact。
- * 否则看风格标记 → style；两样都有 → mixed。
+ * ⚠️ 已删除：classifyChange（原第 901-127 行）
+ *
+ * 它是 dualDiff 早期的单块判定函数，改用句子级序列对齐后用不上了：
+ * dualDiff 现在走 classifyRun，按对齐/增删片段分层。
+ * 它定义了但**全仓没有任何调用点**（OpenContracts 审查指出），而且它的 STYLE_* 词表
+ * 与 classifyRun 用的 SIM_STYLE 是两份，会各自漂移——留着只会误导。
  */
-export function classifyChange(before = '', after = '') {
-  const b = String(before);
-  const a = String(after);
-  const factHits = [];
-  const styleHits = [];
-
-  // 数字/年份/百分比：只要数值变了就是事实层（最容易误判、也最危险的一类）
-  const nums = (s) => (s.match(/\d+(\.\d+)?/g) || []).join(',');
-  if (nums(b) !== nums(a)) factHits.push('number_changed');
-  if (FACT_MARKS.test(b) || FACT_MARKS.test(a)) factHits.push('fact_marker');
-  if (CLAIM_VERBS.test(b) !== CLAIM_VERBS.test(a)) factHits.push('claim_verb_shift');
-  if (hasNegation(b) !== hasNegation(a)) factHits.push('polarity_flip');
-  if (MODAL_WEAK.test(b) && MODAL_STRONG.test(a)) factHits.push('modal_strength_raise');
-  if (MODAL_STRONG.test(b) && MODAL_WEAK.test(a)) factHits.push('modal_strength_lower');
-
-  if (STYLE_CONNECT.test(b) || STYLE_CONNECT.test(a)) styleHits.push('connective');
-  if (STYLE_ADVERB.test(b) || STYLE_ADVERB.test(a)) styleHits.push('adverb');
-  if (STYLE_RHETORIC.test(b) || STYLE_RHETORIC.test(a)) styleHits.push('rhetoric');
-  if (/[，。！？；：、""''（）]/.test(b) || /[，。！？；：、""''（）]/.test(a)) {
-    if (!factHits.length && !styleHits.length) styleHits.push('punctuation');
-  }
-  // 只增删虚词（的/了/着…）且不涉及事实 → 风格层
-  if (!factHits.length) {
-    const onlyParticles =
-      chars(a).filter((c) => !STYLE_PARTICLE.test(c)).join('').replace(/\s/g, '') ===
-      chars(b).filter((c) => !STYLE_PARTICLE.test(c)).join('').replace(/\s/g, '');
-    if (onlyParticles) styleHits.push('particle');
-  }
-
-  const layer = factHits.length && styleHits.length ? 'mixed' : factHits.length ? 'fact' : styleHits.length ? 'style' : 'neutral';
-  return { layer, factHits, styleHits };
-}
 
 /**
  * 风格层归一：去掉连接词/副词/虚词/标点后剩下的"内容骨架"，用于判断
@@ -174,6 +145,16 @@ function sameUnit(a, b) {
 function alignUnits(bu, au) {
   const n = bu.length;
   const m = au.length;
+  // 与 charDiff 同样的长度保护：DP 是 O(n×m)，而且每个格子里还要跑 sameUnit
+  // （正则替换 + 两次 Set 构造）。长文本（几万字的稿子按句切仍有上千句）
+  // 会直接卡死甚至 OOM——charDiff 早就有这个保护，这里漏了。
+  if (n * m > 400000) {
+    // 退化策略：按位置配对（至少不会卡死），并如实标记为近似对齐
+    const pairs = [];
+    for (let i = 0; i < Math.min(n, m); i += 1) pairs.push([i, i]);
+    pairs.approximate = true;
+    return pairs;
+  }
   const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i -= 1) {
     for (let j = m - 1; j >= 0; j -= 1) {
@@ -290,6 +271,8 @@ export function dualDiff(before = '', after = '') {
 
   const factChanges = changes.filter((c) => c.layer === 'fact' || c.layer === 'mixed').length;
   const styleChanges = changes.filter((c) => c.layer === 'style' || c.layer === 'mixed').length;
+  // neutral 层目前不可达：classifyRun 对未对齐片段至少会给一个 style 标记（resegmented）。
+  // 保留字段是为了不破坏调用方，但它是恒为 0 的——不要拿它当"中性改动"的指标。
   const neutral = changes.filter((c) => c.layer === 'neutral').length;
   const total = changes.length;
   const factRatio = total ? Number((factChanges / total).toFixed(3)) : 0;

@@ -3,7 +3,7 @@
 // 纪律：不输出"这是 AI 写的"。只描述结构事实（"这几句长度几乎一样"），
 // 由作者判断这是不是问题——说明文里均匀本来就是优点。
 
-import { mean, mad, permutationEntropy, sd } from './metrics.js';
+import { mean, mad, permutationEntropy } from './metrics.js';
 
 const ANTIPATTERN_LABELS = {
   uniform_run: '连续等长句',
@@ -103,21 +103,35 @@ function choppyGroups(groups) {
 /** 五：连接词堆叠——相邻句读以相同连接词开头 */
 function connectiveStack(sentences) {
   const LEAD = /^(因为|所以|但是|然而|不过|而且|并且|因此|于是|如果|虽然|尽管|即使|首先|其次|最后|另外|此外|同时|总之)/;
+  // 记录"连续同一连接词开头"的区间。
+  //
+  // 原实现有两个错（OpenCodeReview 标为 critical）：
+  //   ① 到第 2 句才 push，却用 [i, i+1] 当起点 → 整个区间后移一位；
+  //   ② 收尾时把 at[1] 设成 i，把不匹配的那一句也算进区间。
+  // 实测 3 句连续"因为"被报成"连续 2 句"、区间 [1,2]（正确是 [1,3]）。
+  // 现在按"同词连续段"精确记录，越界与少算都不会再有。
   const hits = [];
+  let start = -1;
   let prev = null;
-  let run = 1;
+  const flush = (endExclusive) => {
+    if (start >= 0 && endExclusive - start >= 2) {
+      hits.push({ word: prev, at: [start + 1, endExclusive] }); // 1-based 闭区间
+    }
+    start = -1;
+  };
   for (let i = 0; i < sentences.length; i += 1) {
     const m = String(sentences[i].text).match(LEAD);
     const w = m ? m[1] : null;
-    if (w && w === prev) {
-      run += 1;
-      if (run === 2) hits.push({ word: w, at: [i, i + 1] });
-    } else {
-      if (hits.length) hits[hits.length - 1].at[1] = i;
+    if (w && w === prev) continue;
+    flush(i);
+    if (w) {
       prev = w;
-      run = 1;
+      start = i;
+    } else {
+      prev = null;
     }
   }
+  flush(sentences.length);
   return hits.map((h) => ({
     type: 'connective_stack',
     label: ANTIPATTERN_LABELS.connective_stack,
@@ -129,7 +143,7 @@ function connectiveStack(sentences) {
 }
 
 /** 六：标点单一化——全段只有逗号+句号 */
-function punctuationMonotony(text) {
+function punctuationMonotony(text, sentenceCount = 1) {
   const t = String(text || '');
   const kinds = [
     ['顿号', /、/], ['分号', /；/], ['破折号', /—/], ['冒号', /：/],
@@ -140,7 +154,12 @@ function punctuationMonotony(text) {
       {
         type: 'punctuation_monotony',
         label: ANTIPATTERN_LABELS.punctuation_monotony,
-        spans: [1, Number.MAX_SAFE_INTEGER],
+        // 原来是 [1, MAX_SAFE_INTEGER] 当"整篇"哨兵。但下游 suggest.js 拿 spans 做
+        // 锁定区间重叠判断（from <= b && to >= a），这么大的区间跟**任何**锁定区间都重叠，
+        // 于是只要用户锁过一句话，「标点单一化」建议就被静默丢弃（OpenCodeReview 审出来的）。
+        // 改成真实的句读范围：标的确覆盖全篇，但用的是真实句数。
+        spans: [1, Math.max(1, sentenceCount)],
+        wholeDoc: true,
         evidence: '全段只用了逗号和句号',
         hint: '这段的标点种类很少，句子之间的层次关系没有被标出来。',
         severity: 'info',
@@ -157,6 +176,6 @@ export function detectAntipatterns({ text, sentences, lengths, groups, misalignm
     ...boundaryMisalign(misalignments),
     ...choppyGroups(groups),
     ...connectiveStack(sentences),
-    ...punctuationMonotony(text),
+    ...punctuationMonotony(text, (sentences || []).length),
   ];
 }

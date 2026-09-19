@@ -346,6 +346,36 @@ function printError(err) {
 
 async function doctor(cfg, { ping = false } = {}) {
   const report = [];
+  // 数据完整性：状态类文件损坏时，调用方大多用 catch{} 吞掉了，
+  // 用户只会觉得"我的决断/风格不见了"。这里把留痕读出来给人看。
+  try {
+    const w = ws.resolveWorkspace(cfg, '');
+    const integ = path.join(w, 'protocol', 'integrity.jsonl');
+    if (fs.existsSync(integ)) {
+      const rows = fs
+        .readFileSync(integ, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => {
+          try {
+            return JSON.parse(l);
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean);
+      if (rows.length) {
+        report.push(`⚠ 数据完整性: 有 ${rows.length} 次读写异常（最近的：${rows[rows.length - 1].file} ${rows[rows.length - 1].reason}）`);
+        report.push(`   明细: ${integ}`);
+      } else {
+        report.push('数据完整性: ✓ 无异常记录');
+      }
+    } else {
+      report.push('数据完整性: ✓ 无异常记录');
+    }
+  } catch {
+    report.push('数据完整性: （无法检查工作区）');
+  }
   report.push(
     `Node: ${process.version} ${Number(process.versions.node.split('.')[0]) >= 18 ? '✓' : '✗（需要 ≥18）'}`,
   );

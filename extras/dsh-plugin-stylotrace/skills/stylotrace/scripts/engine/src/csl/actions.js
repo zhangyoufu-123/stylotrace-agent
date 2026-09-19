@@ -270,10 +270,11 @@ export async function runCognitiveLoop(jt, ctx = {}, { maxSteps = 6 } = {}) {
       usage.latencyMs += u.latencyMs || 0;
     }
     trace.push({ action: chosen.action, value: chosen.value, needsHuman: step.needsHuman, usage: u || null });
-    if (step.needsHuman) return { trace, current, stop: false, needsHuman: true, step };
+    // 早返回也要带上已累计的 usage——否则在 askHuman 之前跑过的那些调用，
+    // 它们的 token/延迟统计会被调用方整段丢掉（OpenCodeReview 审出来的）。
+    if (step.needsHuman) return { trace, current, stop: false, needsHuman: true, step, usage };
     current = { ...current, ...step.stateDelta };
     if (chosen.action === 'stop' || current.taskComplete) {
-      if (chosen.action !== 'stop' && !current.taskComplete) continue;
       break;
     }
   }

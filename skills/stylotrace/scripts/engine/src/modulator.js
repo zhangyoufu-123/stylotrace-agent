@@ -568,7 +568,7 @@ export function getModulator(workspace) {
     if (mod.ok) {
       try {
         fs.mkdirSync(path.join(workspace, 'vault'), { recursive: true });
-        fs.writeFileSync(weightsFile(workspace), JSON.stringify(mod, null, 2) + '\n', { mode: 0o600 });
+        ws.writeFileAtomic(weightsFile(workspace), JSON.stringify(mod, null, 2) + '\n', { mode: 0o600 });
         writeAvoidance(workspace, collectAvoidance(workspace));
         writeEditTransform(workspace, collectEditTransform(workspace));
       } catch {}
@@ -679,7 +679,7 @@ export function forceRetrain(workspace) {
   if (mod.ok) {
     try {
       fs.mkdirSync(path.join(workspace, 'vault'), { recursive: true });
-      fs.writeFileSync(weightsFile(workspace), JSON.stringify(mod, null, 2) + '\n', { mode: 0o600 });
+      ws.writeFileAtomic(weightsFile(workspace), JSON.stringify(mod, null, 2) + '\n', { mode: 0o600 });
     } catch {}
   }
   modCache.delete(data.signature);
@@ -749,7 +749,7 @@ export function applyEditIncremental(
   };
   try {
     fs.mkdirSync(path.join(workspace, 'vault'), { recursive: true });
-    fs.writeFileSync(weightsFile(workspace), JSON.stringify(next, null, 2) + '\n', { mode: 0o600 });
+    ws.writeFileAtomic(weightsFile(workspace), JSON.stringify(next, null, 2) + '\n', { mode: 0o600 });
   } catch {}
   modCache.delete(data.signature);
   modCache.set(data.signature, next);

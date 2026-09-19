@@ -6,6 +6,26 @@
 const FACT_MARKS = /(\d{3,4}\s*年|\d+(\.\d+)?%|[\d０-９]+[万亿]?[人个座篇家所层米公里吨元]|研究表明|数据表明|统计|实验|调查|报告显示|调查显示)/;
 const CLAIM_VERBS = /(是|不是|并非|属于|导致|证明|表明|说明|意味着|必须|应当|不能|不可能|一定|必然|从未|总是|所有|任何)/;
 const NEGATION = /(不|没|无|未|别|非)/;
+
+/**
+ * 含"否定字"但不表否定的常用词。
+ *
+ * 这是 OpenCodeReview 审出来的真 bug：判否定极性时只要看到"不/无/非"就算一次否定，
+ * 于是把**正当的风格替换**误判成"改了事实"并拒绝交付：
+ *   非常 → 十分   被拒（"非"被当成否定）
+ *   无疑 → 肯定   被拒（"无"被当成否定）
+ *   无数 → 很多   被拒
+ * 实测 5 组常见替换里 3 组被误拒——和早先 A/B 实验里"中文改写 3/3 被拒"是同一类病。
+ * 做法：先剥掉这些"看着像否定、其实不是"的词，再判极性。
+ * 只收并列/副词/成语这类**明确不否定**的词；像"没有""不是"这种真否定一个都不收。
+ */
+const NON_NEGATING =
+  /(非常|非常规|无比|无疑|无论|无数|无非|无妨|无可奈何|无时无刻|非但|非凡|非议|不仅|不但|不管|不外乎|不失为|不无|不时|不约而同|不由自主|不知所措|不折不扣|迫不及待|无可厚非|不妨|不曾想|不由得)/g;
+
+/** 真正的否定极性判断：先剥掉非否定词，再看有没有否定字。 */
+function hasNegation(t) {
+  return NEGATION.test(String(t || '').replace(NON_NEGATING, ''));
+}
 const MODAL_STRONG = /(必然|一定|毫无疑问|肯定|绝对|从不|永远)/;
 const MODAL_WEAK = /(可能|也许|大概|似乎|或许|大概|倾向于|某种程度上|我猜|怀疑)/;
 const STYLE_CONNECT = /(而且|然而|因此|所以|此外|另外|不过|同时|于是|总之|综上|换言之|换句话说|首先|其次|最后)/;
@@ -69,42 +89,13 @@ export function charDiff(before, after) {
 }
 
 /**
- * 判定一个变化块属于哪一层。
- * 事实层优先：出现数字/年份/断言词/否定极性变化/模态强度越级 → fact。
- * 否则看风格标记 → style；两样都有 → mixed。
+ * ⚠️ 已删除：classifyChange（原第 901-127 行）
+ *
+ * 它是 dualDiff 早期的单块判定函数，改用句子级序列对齐后用不上了：
+ * dualDiff 现在走 classifyRun，按对齐/增删片段分层。
+ * 它定义了但**全仓没有任何调用点**（OpenContracts 审查指出），而且它的 STYLE_* 词表
+ * 与 classifyRun 用的 SIM_STYLE 是两份，会各自漂移——留着只会误导。
  */
-export function classifyChange(before = '', after = '') {
-  const b = String(before);
-  const a = String(after);
-  const factHits = [];
-  const styleHits = [];
-
-  // 数字/年份/百分比：只要数值变了就是事实层（最容易误判、也最危险的一类）
-  const nums = (s) => (s.match(/\d+(\.\d+)?/g) || []).join(',');
-  if (nums(b) !== nums(a)) factHits.push('number_changed');
-  if (FACT_MARKS.test(b) || FACT_MARKS.test(a)) factHits.push('fact_marker');
-  if (CLAIM_VERBS.test(b) !== CLAIM_VERBS.test(a)) factHits.push('claim_verb_shift');
-  if (NEGATION.test(b) !== NEGATION.test(a)) factHits.push('polarity_flip');
-  if (MODAL_WEAK.test(b) && MODAL_STRONG.test(a)) factHits.push('modal_strength_raise');
-  if (MODAL_STRONG.test(b) && MODAL_WEAK.test(a)) factHits.push('modal_strength_lower');
-
-  if (STYLE_CONNECT.test(b) || STYLE_CONNECT.test(a)) styleHits.push('connective');
-  if (STYLE_ADVERB.test(b) || STYLE_ADVERB.test(a)) styleHits.push('adverb');
-  if (STYLE_RHETORIC.test(b) || STYLE_RHETORIC.test(a)) styleHits.push('rhetoric');
-  if (/[，。！？；：、""''（）]/.test(b) || /[，。！？；：、""''（）]/.test(a)) {
-    if (!factHits.length && !styleHits.length) styleHits.push('punctuation');
-  }
-  // 只增删虚词（的/了/着…）且不涉及事实 → 风格层
-  if (!factHits.length) {
-    const onlyParticles =
-      chars(a).filter((c) => !STYLE_PARTICLE.test(c)).join('').replace(/\s/g, '') ===
-      chars(b).filter((c) => !STYLE_PARTICLE.test(c)).join('').replace(/\s/g, '');
-    if (onlyParticles) styleHits.push('particle');
-  }
-
-  const layer = factHits.length && styleHits.length ? 'mixed' : factHits.length ? 'fact' : styleHits.length ? 'style' : 'neutral';
-  return { layer, factHits, styleHits };
-}
 
 /**
  * 风格层归一：去掉连接词/副词/虚词/标点后剩下的"内容骨架"，用于判断
@@ -154,6 +145,16 @@ function sameUnit(a, b) {
 function alignUnits(bu, au) {
   const n = bu.length;
   const m = au.length;
+  // 与 charDiff 同样的长度保护：DP 是 O(n×m)，而且每个格子里还要跑 sameUnit
+  // （正则替换 + 两次 Set 构造）。长文本（几万字的稿子按句切仍有上千句）
+  // 会直接卡死甚至 OOM——charDiff 早就有这个保护，这里漏了。
+  if (n * m > 400000) {
+    // 退化策略：按位置配对（至少不会卡死），并如实标记为近似对齐
+    const pairs = [];
+    for (let i = 0; i < Math.min(n, m); i += 1) pairs.push([i, i]);
+    pairs.approximate = true;
+    return pairs;
+  }
   const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i -= 1) {
     for (let j = m - 1; j >= 0; j -= 1) {
@@ -197,21 +198,21 @@ function classifyRun(beforeRun, afterRun, fullBefore, fullAfter) {
     for (const t of new Set(a.match(FACT_TOKEN) || [])) {
       if (!String(fullBefore).includes(t)) factHits.push(`added_fact:${t}`);
     }
-    for (const t of new Set(a.match(NEG_TOKEN) || [])) {
+    for (const t of new Set(a.replace(NON_NEGATING, '').match(NEG_TOKEN) || [])) {
       if (!String(fullBefore).includes(t)) factHits.push(`added_polarity:${t}`);
     }
   } else if (!a) {
     for (const t of new Set(b.match(FACT_TOKEN) || [])) {
       if (!String(fullAfter).includes(t)) factHits.push(`dropped_fact:${t}`);
     }
-    for (const t of new Set(b.match(NEG_TOKEN) || [])) {
+    for (const t of new Set(b.replace(NON_NEGATING, '').match(NEG_TOKEN) || [])) {
       if (!String(fullAfter).includes(t)) factHits.push(`dropped_polarity:${t}`);
     }
   } else {
     // 双向都有的改写片段：数字必须逐一对上，极性/模态不许翻转
     const nums = (s) => (s.match(/\d+(\.\d+)?/g) || []).join(',');
     if (nums(b) !== nums(a)) factHits.push('number_changed');
-    if (NEGATION.test(b) !== NEGATION.test(a)) factHits.push('polarity_flip');
+    if (hasNegation(b) !== hasNegation(a)) factHits.push('polarity_flip');
     if (MODAL_WEAK.test(b) && MODAL_STRONG.test(a)) factHits.push('modal_strength_raise');
     if (MODAL_STRONG.test(b) && MODAL_WEAK.test(a)) factHits.push('modal_strength_lower');
   }
@@ -270,6 +271,8 @@ export function dualDiff(before = '', after = '') {
 
   const factChanges = changes.filter((c) => c.layer === 'fact' || c.layer === 'mixed').length;
   const styleChanges = changes.filter((c) => c.layer === 'style' || c.layer === 'mixed').length;
+  // neutral 层目前不可达：classifyRun 对未对齐片段至少会给一个 style 标记（resegmented）。
+  // 保留字段是为了不破坏调用方，但它是恒为 0 的——不要拿它当"中性改动"的指标。
   const neutral = changes.filter((c) => c.layer === 'neutral').length;
   const total = changes.length;
   const factRatio = total ? Number((factChanges / total).toFixed(3)) : 0;

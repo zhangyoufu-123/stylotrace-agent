@@ -332,7 +332,8 @@ export function snapshot(workspace, { sessionId = 'default' } = {}) {
   const dir = snapshotDir(workspace, sessionId);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `v${state.sVersion}.json`);
-  fs.writeFileSync(file, JSON.stringify(state, null, 2) + '\n');
+  // 原子写：规范状态是这个系统里最不能损坏的文件——写到一半崩溃就整份报废。
+  ws.writeFileAtomic(file, JSON.stringify(state, null, 2) + '\n');
   return { version: state.sVersion, file };
 }
 

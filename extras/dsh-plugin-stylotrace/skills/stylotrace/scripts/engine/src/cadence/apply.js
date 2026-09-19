@@ -57,26 +57,6 @@ export function applyToText(text, suggestions, before) {
       continue;
     }
 
-    if (op === 'upgrade_punctuation_auto') {
-      const prefer = s.action.prefer || '；';
-      const sentences = before.sentence_level.segments || [];
-      const mid = sentences[Math.floor(sentences.length / 2)];
-      const idx = mid.text ? mid.text.indexOf('，') : -1;
-      if (idx < 0) {
-        skipped.push({ id: s.id, reason: '目标句里没有可升级的逗号' });
-        continue;
-      }
-      const rebuilt = mid.text.slice(0, idx) + prefer + mid.text.slice(idx + 1);
-      const pos = out.indexOf(mid.text);
-      if (pos < 0) {
-        skipped.push({ id: s.id, reason: '目标句读在原文中已变化' });
-        continue;
-      }
-      out = out.slice(0, pos) + rebuilt + out.slice(pos + mid.text.length);
-      applied.push(s.id);
-      continue;
-    }
-
     skipped.push({ id: s.id, reason: `「${op || '未知'}」属于语义改写，需交给模型后重新验证` });
   }
 
@@ -94,7 +74,10 @@ export function insertBreakInSentence(sentence, at, mark = '。') {
   const spans = unitSpans(t);
   const target = spans[Math.min(at, spans.length) - 1];
   if (!target) return t;
-  // 从该单位之后跳到标点之后（插在标点后，保留原有层次）
+  // 从该单位之后往后跳过紧跟的标点，再插入断句标点。
+  // 注意：head 末尾的那个标点会被**替换**成新标点（不是保留）——
+  // 「他站着，没动」在第 3 字后断句会变成「他站着。没动」。
+  // 原来的注释写的是"保留原有层次"，与实现不符（OpenCodeReview 指出）。
   let j = target.end + 1;
   while (j < t.length && /[，,、：:；;—]/.test(t[j])) j += 1;
   const head = t.slice(0, j).replace(/[，,、：:；;—]\s*$/, '');

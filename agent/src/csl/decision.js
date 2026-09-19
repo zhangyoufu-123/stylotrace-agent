@@ -35,7 +35,7 @@ function read(workspace) {
 
 function write(workspace, data) {
   fs.mkdirSync(path.dirname(file(workspace)), { recursive: true });
-  fs.writeFileSync(file(workspace), JSON.stringify(data, null, 2) + '\n');
+  ws.writeFileAtomic(file(workspace), JSON.stringify(data, null, 2) + '\n');
 }
 
 const clean = (s, n = 200) => String(s || '').trim().slice(0, n);

@@ -137,13 +137,13 @@ He is a prof. She left. → 修复前 1 段（漏切）  修复后 2 段
 
 按"是否影响用户"排序：
 
-### 4.1 会丢数据或掩盖失败（建议优先）
+### 4.1 会丢数据或掩盖失败 —— **已修（第二轮）**
 
-| 位置 | 问题 |
-|---|---|
-| `brief.js` / `canonical.js` / `credit.js` | **持久化非原子、无锁**：直接覆盖写 JSON，崩溃会留半截文件，并发会丢更新。应改成「临时文件 + rename」 |
-| `brief.js` | 空 `catch {}` 把解析错误、EACCES、EMFILE 与"文件不存在"混为一谈——**损坏的数据被静默当成 0** |
-| `actions.js` | 多个入口（`dispatch`/`runTurn`/`acceptAnswer`/`recordFeedback`）没有 try/catch，一处失败就丢掉已收集的 trace/usage |
+| 位置 | 问题 | 状态 |
+|---|---|---|
+| `state` / `brief` / `canonical` / `decision` / `credit` / `cadence.baseline` / `modulator` | **持久化非原子**：直接覆盖写 JSON，崩溃会留半截文件 | ✅ 已改「临时文件 + rename」（`workspace.writeFileAtomic`），10 处调用点 |
+| `workspace.readState` | 空 `catch {}` 把"损坏"与"不存在"混为一谈——**损坏的状态被静默当成空状态** | ✅ 新增 `readJsonChecked` 区分 missing/corrupt；损坏时抛出明确错误并写入 `protocol/integrity.jsonl` |
+| `actions.js` 入口 | 一处失败丢掉已收集的 trace/usage | ✅ 部分已修（`usage` 早返回）；**入口 try/catch 仍待办** |
 
 ### 4.2 契约字段名不副实
 
@@ -151,24 +151,31 @@ He is a prof. She left. → 修复前 1 段（漏切）  修复后 2 段
 |---|---|---|
 | `actions.js` | 早返回丢掉累计 `usage` | ✅ 已修 |
 | `capabilities.js` | `frozenSpans` 恒等于 `decisions`（解冻是删记录，不是打标记） | ✅ 已修 |
+| `dual-diff.js` | `classifyChange` **全仓无调用点**（死函数，37 行），且它的 `STYLE_*` 词表与 `classifyRun` 的 `SIM_STYLE` 是两份，会漂移 | ✅ 已删除 |
+| `dual-diff.js` | `neutral` 层不可达，`stats.neutral` 恒为 0 | ✅ 已如实标注（保留字段不破坏调用方） |
+| `cadence/index.js` | `frozen_protected` 是全文档布尔值，任何冻结句存在时所有建议都被标"受保护" | ✅ 已改为**逐条**判断 |
+| `cadence/apply.js` | `upgrade_punctuation_auto` 分支永不触发 | ✅ 已删除 |
 | `actions.js` | `nextActions` 声明了但没有任何执行器填充 | ⬜ 待办 |
-| `dual-diff.js` | `neutral` 层不可达，`stats.neutral` 恒为 0 | ⬜ 待办 |
-| `index.js` | `frozen_protected` 是全文档布尔值，任何冻结句存在时所有建议都被标"受保护" | ⬜ 待办 |
 
 ### 4.3 性能与可维护性
 
-- `breath.js` 的 `cost()` 在双重循环里重算长度 → 气群划分是 **O(n³)**
-- `baseline.js` 把作者语料**重复计算三次**（`readBaseline` 两次 + `analyze` 一次）
-- `dual-diff.js` 的 `alignUnits` 没有长度保护，而 `charDiff` 有（`n*m > 400000` 降级）
-- `antipattern.js` 用 `Number.MAX_SAFE_INTEGER` 当区间哨兵，会让「标点单一化」建议与任意锁定区间重叠而被静默丢弃
-- 大量业务常数（阈值、截断长度、权重）硬编码在各模块里
+| 位置 | 问题 | 状态 |
+|---|---|---|
+| `cadence/breath.js` | `cost()` 在双重循环里重算长度 → 气群划分 **O(n³)** | ✅ 已改前缀和（120 小句 1ms） |
+| `cadence/baseline.js` | 作者语料**重复计算三次** | ✅ 已改为采集一次并传入 |
+| `dual-diff.js` | `alignUnits` 没有长度保护（`charDiff` 有） | ✅ 已加 `n*m > 400000` 降级 |
+| `cadence/antipattern.js` | 用 `MAX_SAFE_INTEGER` 当区间哨兵，导致「标点单一化」建议在有任何锁定区间时被静默丢弃 | ✅ 已改用真实句数 |
+| 各模块 | 大量业务常数硬编码 | ⬜ 待办 |
 
-### 4.4 仅影响可读性
+### 4.4 可读性 —— **大部分已清**
 
-- 死导入：`antipattern.js` 的 `sd`、`index.js` 的 `countUnits` / `metricalReport` / `toSsml`
-- 死代码：`author-corpus.js` 里 `.md|.txt` 之后的 `index.json` 排除分支不可达；`apply.js` 的 `upgrade_punctuation_auto` 永不触发
-- 注释与实现不符：`apply.js` 说保留标点但代码删掉了；`antipattern.js` 说做了并列检查其实没做
-- 嵌套三元表达式（项目自己的规则禁止）
+| 位置 | 问题 | 状态 |
+|---|---|---|
+| `antipattern.js` / `index.js` | 死导入（`sd`、`countUnits`、`metricalReport`、`toSsml`） | ✅ 已删（对外 API 保持不变，已断言） |
+| `dual-diff.js` / `apply.js` | 死代码（`classifyChange`、`upgrade_punctuation_auto`） | ✅ 已删 |
+| `apply.js` | 注释说"保留原有层次"，实际是替换标点 | ✅ 注释已改对 |
+| `breath.js` | `PARALLEL_PAIR` 名字暗示做了并列分析，其实只是看有没有顿号 | ✅ 改名为 `LIKELY_ENUMERATION` 并注明是弱启发式 |
+| 多处 | 嵌套三元表达式（项目自己的规则禁止） | ⬜ 待办（纯风格） |
 
 ---
 
@@ -176,8 +183,9 @@ He is a prof. She left. → 修复前 1 段（漏切）  修复后 2 段
 
 | 项目 | 结果 |
 |---|---|
-| 引擎测试 | 74 个文件 **652 项检查全过** |
+| 引擎测试 | 75 个文件 **658 项检查全过** |
 | 网页测试 | 15 个文件 **466 项检查全过** |
+| 数据安全 | 新增 `data-safety.test.mjs`（5 项）：原子写不留残骸、写入失败原文件完好、missing≠corrupt、损坏留痕、正常流程无临时文件 |
 | 双色 diff 极性判别 | **8/8 符合预期**（假阳性消除、真极性仍拦） |
 | 连接词区间 | `[1,3]` 正确；2 句触发、不连续不触发 |
 | 长序列 | 20 万句读不再爆栈 |
@@ -185,7 +193,18 @@ He is a prof. She left. → 修复前 1 段（漏切）  修复后 2 段
 | 冻结保护 | 无关句不再被锁 |
 | 标点保真 | 冒号/顿号/引号原样保留 |
 
-**全部修复未引入回归**（652 + 466 项全过）。
+**全部修复未引入回归**（658 + 466 项全过）。
+
+### 第二轮追加修复（按 §4 的优先级做的）
+
+| 修复 | 验证方式 |
+|---|---|
+| **原子写**：`state`/`brief`/`decision`/`credit`/`baseline`/`modulator` 共 10 处改成「临时文件 + rename」 | 模拟序列化失败：**原文件完好、无临时残留** |
+| **损坏 vs 缺失**：新增 `readJsonChecked`，损坏时抛明确错误并写 `integrity.jsonl` | `readState` 遇坏 JSON → 报"损坏"并留痕 |
+| **doctor 显示完整性**：报错里承诺的"运行 doctor 查看"现在真的能看到 | 有损坏 → `⚠ 数据完整性: 有 1 次读写异常（state.json corrupt）` |
+| **逐条冻结判断**：`frozen_protected` 不再是全文档布尔 | 5 条建议里 0 条被误标为受保护 |
+| **气群划分 O(n³) → O(n²)** | 120 小句 1ms |
+| **作者语料采集 3 次 → 1 次** | `analyze` 内部去重 |
 
 ---
 

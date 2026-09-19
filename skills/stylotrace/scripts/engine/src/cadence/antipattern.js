@@ -3,7 +3,7 @@
 // 纪律：不输出"这是 AI 写的"。只描述结构事实（"这几句长度几乎一样"），
 // 由作者判断这是不是问题——说明文里均匀本来就是优点。
 
-import { mean, mad, permutationEntropy, sd } from './metrics.js';
+import { mean, mad, permutationEntropy } from './metrics.js';
 
 const ANTIPATTERN_LABELS = {
   uniform_run: '连续等长句',
@@ -143,7 +143,7 @@ function connectiveStack(sentences) {
 }
 
 /** 六：标点单一化——全段只有逗号+句号 */
-function punctuationMonotony(text) {
+function punctuationMonotony(text, sentenceCount = 1) {
   const t = String(text || '');
   const kinds = [
     ['顿号', /、/], ['分号', /；/], ['破折号', /—/], ['冒号', /：/],
@@ -154,7 +154,12 @@ function punctuationMonotony(text) {
       {
         type: 'punctuation_monotony',
         label: ANTIPATTERN_LABELS.punctuation_monotony,
-        spans: [1, Number.MAX_SAFE_INTEGER],
+        // 原来是 [1, MAX_SAFE_INTEGER] 当"整篇"哨兵。但下游 suggest.js 拿 spans 做
+        // 锁定区间重叠判断（from <= b && to >= a），这么大的区间跟**任何**锁定区间都重叠，
+        // 于是只要用户锁过一句话，「标点单一化」建议就被静默丢弃（OpenCodeReview 审出来的）。
+        // 改成真实的句读范围：标的确覆盖全篇，但用的是真实句数。
+        spans: [1, Math.max(1, sentenceCount)],
+        wholeDoc: true,
         evidence: '全段只用了逗号和句号',
         hint: '这段的标点种类很少，句子之间的层次关系没有被标出来。',
         severity: 'info',
@@ -171,6 +176,6 @@ export function detectAntipatterns({ text, sentences, lengths, groups, misalignm
     ...boundaryMisalign(misalignments),
     ...choppyGroups(groups),
     ...connectiveStack(sentences),
-    ...punctuationMonotony(text),
+    ...punctuationMonotony(text, (sentences || []).length),
   ];
 }

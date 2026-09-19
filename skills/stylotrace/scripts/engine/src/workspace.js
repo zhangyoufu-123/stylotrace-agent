@@ -51,9 +51,66 @@ export function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
+/**
+ * 区分"文件不存在"与"文件损坏"的读取。
+ *
+ * 为什么需要（OpenCodeReview 审出来的问题）：全仓有大量 `catch {}`，
+ * 把解析错误、EACCES、文件不存在全都吞成"没有数据"——**损坏的状态被静默当成空状态**，
+ * 用户看到的是"我的决断/风格/账本不见了"，而不是"文件坏了"。
+ * 这两种情况必须分开：不存在是正常的（首次运行），损坏是要报警的。
+ */
+export function readJsonChecked(file) {
+  if (!fs.existsSync(file)) return { ok: false, reason: 'missing', file };
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    return { ok: false, reason: 'unreadable', error: String(e?.message || e), file };
+  }
+  try {
+    return { ok: true, value: JSON.parse(raw), file };
+  } catch (e) {
+    return { ok: false, reason: 'corrupt', error: String(e?.message || e), file };
+  }
+}
+
+/**
+ * 记录"状态文件损坏"这件事，让用户能看见，而不是让它悄悄变成 0。
+ * 写进 protocol/integrity.jsonl，供状态面板与 CLI 显示。
+ */
+export function noteIntegrityIssue(workspace, { file, reason, error = '' }) {
+  try {
+    const f = path.join(workspace, 'protocol', 'integrity.jsonl');
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.appendFileSync(f, JSON.stringify({ at: new Date().toISOString(), file: path.basename(file), reason, error: String(error).slice(0, 200) }) + '\n');
+  } catch {}
+}
+
 export function writeJson(file, obj) {
+  return writeFileAtomic(file, JSON.stringify(obj, null, 2) + '\n');
+}
+
+/**
+ * 原子写：先写临时文件，再 rename 覆盖。
+ *
+ * 为什么必须这样（OpenCodeReview 审出来的真问题）：直接 writeFileSync 覆盖 JSON，
+ * 一旦写到一半崩溃/断电，文件就变成半截——而这个系统里 state / brief / canonical /
+ * credit 全是**只能读不能修**的持久状态，半截文件等于用户数据报废。
+ * 同分区的 rename 是原子操作：要么是旧内容，要么是新内容，不存在中间态。
+ */
+export function writeFileAtomic(file, content, opts = {}) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(obj, null, 2) + '\n');
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    fs.writeFileSync(tmp, content, opts);
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {}
+    throw e;
+  }
+  return file;
 }
 
 export function appendLine(file, line) {
@@ -84,7 +141,13 @@ export function countLines(file) {
 // ── state ──────────────────────────────────────────────
 
 export function readState(ws) {
-  return readJson(path.join(ws, 'protocol', 'state.json'));
+  const f = path.join(ws, 'protocol', 'state.json');
+  const r = readJsonChecked(f);
+  if (r.ok) return r.value;
+  // 不存在 = 还没开始写（正常）；损坏 = 必须让人知道，不能悄悄当成空状态
+  if (r.reason === 'missing') throw new Error(`工作区不存在状态文件: ${f}（先运行 stylotrace init）`);
+  noteIntegrityIssue(ws, { file: f, reason: r.reason, error: r.error });
+  throw new Error(`状态文件${r.reason === 'corrupt' ? '损坏' : '读不了'}: ${f}（已记入 protocol/integrity.jsonl，运行 stylotrace doctor 查看）`);
 }
 
 export function writeState(ws, state) {

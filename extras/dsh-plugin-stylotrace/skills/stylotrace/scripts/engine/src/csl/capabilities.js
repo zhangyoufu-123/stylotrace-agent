@@ -189,7 +189,11 @@ export function capabilityStatus(workspace, { sessionId = 'default' } = {}) {
       hypotheses: (cs.hypotheses || []).length,
       memoryRefs: (cs.memoryRefs || []).length,
       decisions: decisions.length,
-      frozenSpans: decisions.filter((d) => d.frozen !== false).length,
+      // 决断卡一旦建立就是冻结状态；unfreezeDecision() 是**删除记录**而不是打标记，
+      // 所以这里再过滤一次没有意义。原来的 `d.frozen !== false` 恒为真——
+      // 那是个误导性指标（OpenCodeReview 审出来的）。
+      // 保留字段名以免破坏调用方，但语义写明：它就是决断数。
+      frozenSpans: decisions.length,
       briefVersion: brief.briefVersion || 0,
       events,
     },

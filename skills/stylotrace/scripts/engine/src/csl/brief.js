@@ -141,7 +141,7 @@ export function syncBrief(workspace, { sessionId = 'default' } = {}) {
   next.briefVersion = (prev.briefVersion || 0) + (changed ? 1 : 0);
   next.updatedAt = ws.nowIso();
   fs.mkdirSync(path.dirname(briefFile(workspace)), { recursive: true });
-  fs.writeFileSync(briefFile(workspace), JSON.stringify(next, null, 2) + '\n');
+  ws.writeFileAtomic(briefFile(workspace), JSON.stringify(next, null, 2) + '\n');
   if (changed) {
     st.commit(workspace, {
       delta: { brief: { version: next.briefVersion, hash: next.briefHash, coreIdea: next.coreIdea.slice(0, 60) } },
@@ -196,6 +196,6 @@ export function recordEdit(workspace, { edit = '', source = 'user-edit', session
   brief.editCount = (brief.editCount || 0) + 1;
   brief.outcomeRefs = [...(brief.outcomeRefs || []), outcome.outcomeId].slice(-20);
   brief.updatedAt = ws.nowIso();
-  fs.writeFileSync(briefFile(workspace), JSON.stringify(brief, null, 2) + '\n');
+  ws.writeFileAtomic(briefFile(workspace), JSON.stringify(brief, null, 2) + '\n');
   return { outcome, editCount: brief.editCount };
 }

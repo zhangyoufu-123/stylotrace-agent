@@ -20,8 +20,14 @@ export const COMFORT = { min: 7, max: 25 };
 const LEAD_CONNECTIVE = /^(因为|所以|但是|然而|不过|而且|并且|因此|于是|如果|虽然|尽管|即使|以及|或者|而|但|却|就|才|又|也|还|则|便|故|因|若|虽|且|并|或)/;
 // 边界前若以此结尾，语义往往已完整（倾向成界）
 const TAIL_COMPLETE = /(了|的|着|过|呢|吧|啊|吗|呀|嘛|罢了|而已|一样|似的)$/;
-// 并列/对仗结构：边界强度低，应合并为一个气群
-const PARALLEL_PAIR = /^(?=.*[，,、])/;
+/**
+ * 并列/对仗的**粗略**信号：这个小句自己内部还带着顿号，说明它在列举。
+ *
+ * ⚠️ 诚实标注：这只是"看起来像并列"的弱启发式，**不是真正的并列/对仗判定**。
+ * 真正的判定要看两侧小句的结构是否平行（字数、词性、句式），这里没做——
+ * 原注释写"并列结构应合并"，读代码会以为做了结构分析（OpenCodeReview 指出）。
+ */
+const LIKELY_ENUMERATION = /[、]/;
 
 /**
  * 边界强度打分：越大越应该成为一个气群边界。
@@ -40,8 +46,8 @@ export function boundaryStrength({ left, right, leftLen, rightLen, clauseLen }) 
   if (leftLen >= COMFORT.min && rightLen >= COMFORT.min) s += 0.2;
   if (leftLen > COMFORT.max || rightLen > COMFORT.max) s += 0.15;
 
-  // 并列/对仗：两个短句结构相似 → 不切
-  if (PARALLEL_PAIR.test(left) || PARALLEL_PAIR.test(right)) s -= 0.15;
+  // 列举结构（小句内还有顿号）→ 不切：这类通常是"A、B、C"被拆开，读起来是一个口气
+  if (LIKELY_ENUMERATION.test(left) || LIKELY_ENUMERATION.test(right)) s -= 0.15;
 
   // 焦点词被割裂：右边以"的"开头（修饰语被切断）→ 不切
   if (/^的/.test(right)) s -= 0.3;
@@ -73,9 +79,12 @@ function splitSentenceIntoGroups(sentence) {
 
   // DP：dp[i][j] = 前 i 个小句、最后一段结束在 j 的最小代价
   // 代价 = Σ 长度惩罚 − Σ 边界收益；同时限制总气群数不超过句长上限所需
+  // 前缀和：原来 cost(from,to) 每次都在循环里累加长度，而它被双重循环调用，
+  // 整段划分退化成 O(n³)——长句（小句多）时会明显卡。前缀和之后取区间长度是 O(1)。
+  const prefix = new Array(n + 1).fill(0);
+  for (let i = 0; i < n; i += 1) prefix[i + 1] = prefix[i] + (clauses[i].length || 0);
   const cost = (from, to) => {
-    let len = 0;
-    for (let k = from; k <= to; k += 1) len += clauses[k].length;
+    const len = prefix[to + 1] - prefix[from];
     let c = 0;
     if (len < COMFORT.min) c += (COMFORT.min - len) * 0.6;
     if (len > COMFORT.max) c += (len - COMFORT.max) * 1.4;

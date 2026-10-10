@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { harnessTag } from './harness.js';
+import { lineageTag } from './lineage.js';
 
 const EVENTS_FILE = 'protocol/csl-events.jsonl';
 
@@ -34,6 +35,8 @@ export function appendEvent(workspace, event) {
     event_id: event.event_id || crypto.randomUUID(),
     // 每条事件都带当前 Harness 版本：否则事后无法区分"变好是因为换了配置还是换了模型"
     harness_version: harnessTag(workspace),
+    // 同理带 lineage：一次任务里模型的变动、策略文件的变动都能回溯到具体是哪次运行
+    lineage_id: lineageTag(workspace, event.session_id || 'default'),
     ...event,
     timestamp: event.timestamp || nowIso(),
   }));

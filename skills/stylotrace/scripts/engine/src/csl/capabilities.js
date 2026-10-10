@@ -161,6 +161,16 @@ export const CAPABILITIES = [
       '产物只来自 Writer 写入的 draft.md，executor 未执行时 artifact 为 null，绝不返回认知循环里的拼接串（csl-dispatch 测试）',
   },
   {
+    id: 'lineage',
+    name: '版本谱系（这次运行到底用了什么）',
+    layer: '合规层',
+    entry: { cli: 'stylotrace lineage [history]', web: '—', api: '—' },
+    status: 'live',
+    evidence:
+      '每次 runTask 登记不可变 lineage：模型 / Harness 版本 / 作者画像哈希 / 控制器·检索·写作策略的源文件哈希 / 状态 schema 版本；' +
+      '事件带 lineage_id，H0 与 H1 的混合运行可正确归因（csl-lineage 测试）',
+  },
+  {
     id: 'sidecar',
     name: 'Sidecar 协议（小模型影响大模型输出）',
     layer: '集成层',

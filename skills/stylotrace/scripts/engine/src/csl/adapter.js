@@ -6,6 +6,7 @@ import * as rt from './runtime.js';
 import * as br from './brief.js';
 import { readCanonical, syncCoreIdea, canWrite } from './canonical.js';
 import { dispatchApp, renderDispatch } from './dispatch.js';
+import * as lineage from './lineage.js';
 
 /** 认知动作 → 应用执行器映射（应用层只做转换，不重新认知）。 */
 export const ACTION_APP_MAP = {
@@ -52,6 +53,22 @@ export async function runTask({
   llm = null,
   metadata = {},
 } = {}) {
+  // P1 版本谱系：任务开始就登记不可变 lineage，之后这条任务里的事件/产物都能回溯到它。
+  // modelRef 优先用调用方给的（metadata.modelRef），否则按进程配置记录；拿不到就 unversioned。
+  let modelRef = metadata.modelRef || '';
+  if (!modelRef) {
+    try {
+      const { loadConfig } = await import('../config.js');
+      modelRef = lineage.defaultModelRef(loadConfig());
+    } catch {
+      modelRef = '';
+    }
+  }
+  const lin = lineage.startLineage(workspace, {
+    modelRef,
+    sessionId,
+    channel,
+  });
   // Fast → State（产品已确认信息入内核 + Brief 组装）
   syncCoreIdea(workspace);
   br.syncBrief(workspace, { sessionId });
@@ -96,6 +113,8 @@ export async function runTask({
     reply: r.reply || '',
     actionTrace: r.actionTrace || [],
     needsHuman: r.kind === 'ask' || r.kind === 'checkpoint' || blocked,
+    lineageId: lin.lineageId,
+    lineage: lin,
     executed,
     // 产物只来自 executor（Writer 写进 draft.md）；executor 没执行时这里是 null，
     // 绝不把认知循环里 `hypotheses.join('。')` 那种拼接串当文章返回。

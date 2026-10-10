@@ -33,7 +33,7 @@
 | # | 差距 | 阻塞什么 | 状态 |
 |---|---|---|---|
 | **D1** | **Writer 未接入运行周期**：统一入口只做认知决策与门控，不产出文章 | 阻塞**所有**产品级证据——没有产物就没有质量、意图保真、编辑负担可测 | **本轮修掉主链**，见 §5.1 |
-| D2 | 版本谱系：六维里只实现了 1 维 | 阻塞归因（分不清是换了配置还是换了模型） | 未动 |
+| D2 | 版本谱系：六维里只实现了 1 维 | 阻塞归因（分不清是换了配置还是换了模型） | **本轮完成**，见 §5.3 |
 | D3 | 预算硬约束 | 阻塞成本控制与"耗尽后零调用"验证 | 未动 |
 | D4 | Claim Ledger + 冻结 Gate | 阻塞事实保护与过度断言拦截 | 未动 |
 | D5 | 9 个 Harness 键无消费点 | 已单列，不再冒充可调；等修消费点 | 本轮单列 |
@@ -56,8 +56,10 @@ MCP `csl_turn` 同样回报派发结果（`mcp-fresh` 有断言守住）。
 验收：`stylotrace run` 在具备大纲与核心主张的工作区上产出可读产物 ✅；
 端到端真实模型实测产出 306 字正文节 ✅；有测试断言 artifact 只来自 executor、绝不为拼接串 ✅。
 
-**P1 — 版本谱系进入 Canonical State**
-验收：六个维度可追踪；H0/H1 混合运行可正确归因；session 隔离与版本冲突测试通过。
+**P1 — 版本谱系进入 Canonical State** ✅ 已完成（§5.2）
+新增 `csl/lineage.js`，七个维度逐条落地；事件带 `lineage_id`；`lineage history` 可对比。
+验收：六维可追踪 ✅；H0/H1 混合运行可归因（`diffLineage` 只报 harnessVersion 变化）✅；
+CLI/MCP/Web 三端都经 `runTask` 自动登记 ✅；sessionId 含路径字符不越界 ✅（有测试）。
 
 **P2 — 预算硬约束**
 [修正] 预算表补 `maxEvolutionCalls` 与**人类时间预算**（`maxHumanMinutes`）。
@@ -122,6 +124,31 @@ MCP `csl_turn` 同样回报派发结果（`mcp-fresh` 有断言守住）。
 说明 Brief 里的作者立场约束确实传到了 Writer，而不是字符串拼接。
 
 ### 5.2 Harness 白名单诚实化
+
+**P1 版本谱系（对应 D2）**
+
+新增 `agent/src/csl/lineage.js`。每次 `runTask` 登记一条不可变 lineage，落在
+`protocol/lineage/<sessionId 的哈希>.json`（当前）与 `protocol/lineage.jsonl`（历史）。
+七个维度：
+
+| 维度 | 来源 | 说明 |
+|---|---|---|
+| `modelRef` | 调用方 `metadata.modelRef`，否则读进程配置 | 拿不到就 `unversioned`，不猜 |
+| `harnessVersion` | `harness.currentVersion()` | 已有真实版本号 |
+| `authorModelVersion` | 画像文件内容哈希 | `vault/` 五个文件；一个都没有就是 `unversioned` |
+| `controllerPolicyVersion` | **正在运行的** `actions.js` 内容哈希 | 没有语义版本就不伪造 |
+| `retrievalPolicyVersion` | 正在运行的 `rag.js` 内容哈希 | 同上 |
+| `writerPolicyVersion` | 正在运行的 `write.js` 内容哈希 | 同上 |
+| `stateSchemaVersion` | `protocol/state.json` | 独立管理，与行为版本分开 |
+
+把"策略版本"定义成**正在跑的那个源文件的哈希**，是主提示词 §6.1 允许的做法
+（"记录明确的 `unversioned` 或稳定组件 hash，不能伪造版本语义"）。它带来的性质是：
+策略改了哈希必变、同一次提交永远同哈希——够用来归因，又不假装是人工维护的版本号。
+
+事件同时打上 `lineage_id`；`lineage.history` 加 `diffLineage()` 可以一键看出两次运行差在哪。
+实测：同一会话先跑一次（H0）再发布 H1 跑一次，`diffLineage` 只报 `harnessVersion` 一项变化。
+
+### 5.3 Harness 白名单诚实化
 
 **Harness 白名单从"13 个声明"改成"4 个已接线 + 9 个未接线单列"。**
 

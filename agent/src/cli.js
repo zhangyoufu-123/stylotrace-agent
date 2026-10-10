@@ -292,6 +292,8 @@ const HELP = `Stylotrace Agent v0.23 — 完整写作 Agent（导演模式 · �
                                     （llm_judge 不得单独作证，须另带 corroboratedBy）
   stylotrace harness publish <releaseId> --by 审批人     发布（四件事同时成立才写）
   stylotrace harness rollback [--to H0] [--reason 说明]   回滚到历史版本（不存在则拒绝且保持现状）
+  stylotrace lineage [--session 会话] [--json]    版本谱系：这次运行用的模型 / Harness / 作者画像 / 策略代码
+  stylotrace lineage history [--json]             历次运行的 lineage（改了什么一对比就知道）
   stylotrace cadence "<文本>" [--json|--ssml|--meter|--apply]
                                     节奏与气群：气群图 / 反模式 / 呼吸建议 / 闭环比对 / 平仄 / SSML
                                      [--interactive] [--debug] [--provider 提供商] [--model 模型] [--json]
@@ -2236,6 +2238,27 @@ export async function runCli(argv, io = {}) {
           break;
         }
         throw new Error(`harness 未知子命令: ${sub}（可用 status|log|propose|evaluate|publish|rollback）`);
+      }
+      case 'lineage': {
+        // 版本谱系：一次运行到底用的哪个模型 / 哪版 Harness / 哪版作者画像 / 哪版策略代码。
+        const L = await import('./csl/lineage.js');
+        const lw = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || '.'), { create: true });
+        const sub = positional[0] || 'current';
+        if (sub === 'history') {
+          if (flags.json) {
+            console.log(JSON.stringify(L.readHistory(lw), null, 2));
+            break;
+          }
+          console.log(L.renderHistory(lw));
+          break;
+        }
+        const m = L.currentLineage(lw, flags.session || 'default');
+        if (flags.json) {
+          console.log(JSON.stringify(m, null, 2));
+          break;
+        }
+        console.log(L.renderLineage(m));
+        break;
       }
       default:
         console.error(`[stylotrace] 未知命令: ${cmd}`);

@@ -2,7 +2,7 @@
 
 定位一句话：**给你的 AI Agent 装一个"会写、还会学你风格"的写作子 agent。**
 分发形态：DSH 插件（npm `dsh-plugin-stylotrace`，0.1.13）+ skill（Codex / Claude Code / OpenCode / Cursor / Windsurf）+ MCP。
-仓库：<https://github.com/zhangyoufu-123/stylotrace>
+仓库：<https://github.com/zhangyoufu-123/stylotrace-agent>
 
 > 原则：不刷量、不造假、不做"AI 投毒"。靠真实 demo、真实使用案例、出现在正确的生态位里。
 
@@ -28,7 +28,7 @@
 > 它是个写作子 agent，装进 Codex / Claude Code / OpenCode / Cursor / DeepSeek Harness 就能用：
 > 澄清 → 大纲 → 写作 → 审计 → 交付，一条龙；给个项目目录还能自动写成报告 / README / 技术博客。
 >
-> 开源、BYOK、一条命令安装。GitHub: github.com/zhangyoufu-123/stylotrace
+> 开源、BYOK、一条命令安装。GitHub: github.com/zhangyoufu-123/stylotrace-agent
 
 配图：30 秒用法截图或录屏。话题：#AIWriting #LLM #OpenSource #DeepSeek
 
@@ -64,7 +64,7 @@
 > Harness. Bring-your-own-key, open source (MIT), one-command install. It also turns a project directory
 > into a report/README/blog post in your own voice.
 >
-> GitHub: github.com/zhangyoufu-123/stylotrace — demo in the README.
+> GitHub: github.com/zhangyoufu-123/stylotrace-agent — demo in the README.
 
 r/writing 版把语气从"开发者"换成"写作者"：强调"它学的是你，不是名人模板；数据在你手里"。
 

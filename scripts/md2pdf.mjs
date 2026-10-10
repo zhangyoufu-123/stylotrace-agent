@@ -135,24 +135,29 @@ const CSS = `
 @page { size: A4; margin: 18mm 16mm; }
 * { box-sizing: border-box; }
 body { font-family: "PingFang SC", "Hiragino Sans GB", "Songti SC", "Microsoft YaHei", serif;
-  font-size: 10.5pt; line-height: 1.75; color: #1a1a1a; margin: 0; }
-h1 { font-size: 20pt; margin: 0 0 6pt; border-bottom: 2px solid #b8860b; padding-bottom: 6pt; }
-h2 { font-size: 14pt; margin: 16pt 0 6pt; color: #8a6d0b; }
-h3 { font-size: 12pt; margin: 12pt 0 4pt; }
-h4 { font-size: 11pt; margin: 10pt 0 4pt; }
-p { margin: 5pt 0; }
-ul, ol { margin: 5pt 0 5pt 18pt; padding: 0; }
-li { margin: 2pt 0; }
-table { width: 100%; border-collapse: collapse; margin: 8pt 0; font-size: 9.5pt; }
-th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
-th { background: #f6f2e6; }
-code { background: #f4f4f4; padding: 1pt 3pt; border-radius: 3px; font-family: "SF Mono", Menlo, monospace; font-size: 9pt; }
-pre { background: #f7f7f7; border-left: 3px solid #b8860b; padding: 8pt; overflow-x: auto; }
+  font-size: 10.5pt; line-height: 1.85; color: #1a1a1a; margin: 0;
+  text-align: justify; }
+h1 { font-size: 18pt; font-weight: 700; margin: 0 0 10pt; color: #111;
+  border-bottom: 1px solid #333; padding-bottom: 6pt; text-align: left; }
+h2 { font-size: 13.5pt; font-weight: 700; margin: 18pt 0 7pt; color: #111; text-align: left; }
+h3 { font-size: 11.5pt; font-weight: 700; margin: 13pt 0 5pt; color: #111; text-align: left; }
+h4 { font-size: 10.5pt; font-weight: 700; margin: 10pt 0 4pt; color: #111; text-align: left; }
+p { margin: 6pt 0; }
+ul, ol { margin: 6pt 0 6pt 20pt; padding: 0; }
+li { margin: 3pt 0; }
+table { width: 100%; border-collapse: collapse; margin: 9pt 0; font-size: 9.5pt; }
+th, td { border: 1px solid #bbb; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+th { background: #f2f2f2; font-weight: 700; }
+code { background: #f4f4f4; padding: 1pt 3pt; border-radius: 2px; font-family: "SF Mono", Menlo, monospace; font-size: 9pt; }
+pre { background: #fafafa; border: 1px solid #e2e2e2; padding: 9pt 10pt; overflow-x: auto;
+  font-size: 9pt; line-height: 1.6; text-align: left; break-inside: avoid; page-break-inside: avoid; }
 pre code { background: none; padding: 0; }
-blockquote { margin: 8pt 0; padding: 6pt 10pt; background: #faf7ee; border-left: 3px solid #d9c37a; }
-blockquote p { margin: 3pt 0; }
-hr { border: none; border-top: 1px solid #ddd; margin: 12pt 0; }
-strong { color: #000; }
+blockquote { margin: 8pt 0 8pt 12pt; padding: 0; color: #222; }
+blockquote p { margin: 4pt 0; }
+hr { border: none; border-top: 1px solid #d5d5d5; margin: 14pt 0; }
+strong { font-weight: 700; }
+h1, h2, h3, h4 { break-after: avoid; page-break-after: avoid; }
+tr, li { break-inside: avoid; }
 `;
 
 function buildHtml(md, title) {

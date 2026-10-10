@@ -159,6 +159,24 @@ export const CAPABILITIES = [
     evidence: 'PRISM 创新点二，尚未实现',
   },
   {
+    id: 'harness-release',
+    name: 'Harness 版本化发行（冻结模型、进化外壳）',
+    layer: '治理层',
+    entry: { cli: 'stylotrace harness', web: '—', api: '—' },
+    status: 'live',
+    evidence:
+      '可进化白名单 13 键 + 冻结区 9 类；发布门要求配对对照、留出集、样本量 ≥8、零回归，' +
+      '且必须有审批人；事件带 harness_version；已发布版本真的改变提问选择（csl-harness 测试）',
+  },
+  {
+    id: 'harness-evolution',
+    name: '自动提案（进化循环自己找候选）',
+    layer: '治理层',
+    entry: { cli: '—', web: '—', api: '—' },
+    status: 'planned',
+    evidence: '当前候选由人或外部优化器提出；自动反思→提案回路未实现',
+  },
+  {
     id: 'longitudinal',
     name: '长期学习证明（越用越好）',
     layer: '学习层',

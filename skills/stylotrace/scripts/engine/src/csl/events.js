@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { harnessTag } from './harness.js';
 
 const EVENTS_FILE = 'protocol/csl-events.jsonl';
 
@@ -31,6 +32,8 @@ export function appendEvent(workspace, event) {
   fs.mkdirSync(dir, { recursive: true });
   appendLine(eventsFile(workspace), JSON.stringify({
     event_id: event.event_id || crypto.randomUUID(),
+    // 每条事件都带当前 Harness 版本：否则事后无法区分"变好是因为换了配置还是换了模型"
+    harness_version: harnessTag(workspace),
     ...event,
     timestamp: event.timestamp || nowIso(),
   }));

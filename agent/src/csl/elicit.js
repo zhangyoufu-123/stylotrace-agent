@@ -67,17 +67,25 @@ function candidates(state) {
   return list;
 }
 
-/** 确定性选问：score = IG − λ·Cost − μ·Intrusion。 */
-export function pickQuestion(state, { lambda = 0.2, mu = 0.25 } = {}) {
+/**
+ * 确定性选问：score = wIG·IG − λ·Cost − μ·Intrusion − ρ·Asked(同类已问次数)。
+ *
+ * 修复（2026-10）：原实现先按"不含 ρ"的分数**选出唯一候选**，再由调用方把 ρ 加到
+ * 这一个候选身上。结果 ρ 只改显示分数、永远改不了选择——同类问题被问 10 次也照样再问一次。
+ * 现在 ρ 参与**全候选排序**，重复项真的会被压到后面。
+ * 传 askedTypes 才启用 ρ；不传时行为与旧版一致（ρ=0，候选集内静态打分）。
+ */
+export function pickQuestion(state, { wIg = 1, lambda = 0.2, mu = 0.25, rho = 0, askedTypes = null } = {}) {
   const c = candidates(state);
   if (!c.length) return null;
   let best = null;
   let bestScore = -Infinity;
   for (const q of c) {
-    const score = q.ig - lambda * q.cost - mu * q.intrusion;
+    const asked = askedTypes ? askedTypes[q.type] || 0 : 0;
+    const score = wIg * q.ig - lambda * q.cost - mu * q.intrusion - rho * asked;
     if (score > bestScore) {
       bestScore = score;
-      best = { ...q, score: Number(score.toFixed(4)) };
+      best = { ...q, score: Number(score.toFixed(4)), asked };
     }
   }
   return best;
@@ -165,8 +173,9 @@ export async function generateQuestion(state, { llm = null, topic = '', askedTex
 }
 
 /** 贴题提问（异步）：优先 LLM 生成，失败回退固定库；保证永不返回空。 */
-export async function pickQuestionSmart(state, { llm = null, topic = '', askedTexts = [], interaction = null } = {}) {
-  const fallback = pickQuestion(state);
+export async function pickQuestionSmart(state, { llm = null, topic = '', askedTexts = [], interaction = null, weights = {} } = {}) {
+  const askedTypes = interaction?.askedTypes || null;
+  const fallback = pickQuestion(state, { ...weights, askedTypes });
   const made = await generateQuestion(state, { llm, topic: topic || state?.topic || '', askedTexts });
   if (made) {
     return {

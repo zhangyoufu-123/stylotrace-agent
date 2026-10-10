@@ -280,6 +280,15 @@ const HELP = `Stylotrace Agent v0.23 — 完整写作 Agent（导演模式 · �
                                     棱镜/双色diff/自证/反锁死/记忆/检索/归因/审计），含入口与证据
   stylotrace outcomes [--session 会话] [--json]
                                     结果账本：预测 → 实际 → 反事实归因，可逐条导出核查
+  stylotrace harness [status] [--json]        Harness 发行状态：当前版本、生效配置、发布门、冻结区
+  stylotrace harness log [--json]             Harness 发行账本（提案/拒收/评估/发布/回滚）
+  stylotrace harness propose --config '{"键":值}' [--target 故障类型] [--reason 说明]
+                                    提案一个候选配置（只允许可进化白名单里的键，碰冻结区直接拒收）
+  stylotrace harness evaluate <releaseId> --results '{"paired":true,"heldOut":true,
+                                    "sampleSize":20,"heldOutDelta":0.1,"regressionRate":0}'
+                                    过发布门：配对对照 + 留出集 + 样本量 ≥8 + 零回归
+  stylotrace harness publish <releaseId> --by 审批人     发布（四件事同时成立才写）
+  stylotrace harness rollback [--to H0] [--reason 说明]   回滚到历史版本（不存在则拒绝且保持现状）
   stylotrace cadence "<文本>" [--json|--ssml|--meter|--apply]
                                     节奏与气群：气群图 / 反模式 / 呼吸建议 / 闭环比对 / 平仄 / SSML
                                      [--interactive] [--debug] [--provider 提供商] [--model 模型] [--json]
@@ -313,6 +322,8 @@ const VALUE_FLAGS = new Set([
   'topic', 'train', 'type', 'use', 'want', 'words', 'workspace', 'world',
   // 引用：--quote "被引用的原文" [--quote-kind text|question]
   'quote', 'quote-kind', 'input', 'standard',
+  // Harness 发行：--config/--results 传 JSON，--by 审批人，--reason 理由
+  'config', 'results', 'by', 'reason', 'target',
 ]);
 
 export function parseArgs(argv) {
@@ -2124,6 +2135,91 @@ export async function runCli(argv, io = {}) {
         }
         console.log(C.renderCapabilities(status));
         break;
+      }
+      case 'harness': {
+        // 冻结模型、进化 Harness：运行时只用已发布版本；发布必须过门 + 有审批人。
+        const H = await import('./csl/harness.js');
+        const sub = positional[0] || 'status';
+        const hw = ws.ensureWorkspace(ws.resolveWorkspace(cfg, flags.workspace || '.'), { create: true });
+        const asJson = (s, label) => {
+          try {
+            return JSON.parse(String(s));
+          } catch {
+            throw new Error(`${label} 需要合法 JSON，例如 --config '{"question.weights.repetition":0.1}'`);
+          }
+        };
+
+        if (sub === 'status') {
+          if (flags.json) {
+            console.log(JSON.stringify({
+              version: H.currentVersion(hw),
+              current: H.current(hw),
+              effective: H.activeConfig(hw),
+              gate: H.GATE_V0,
+              evolvable: H.EVOLVABLE_KEYS,
+              frozen: H.FROZEN_ZONE,
+            }, null, 2));
+            break;
+          }
+          console.log(H.renderHarness(hw));
+          break;
+        }
+        if (sub === 'log') {
+          const log = H.releaseLog(hw);
+          if (flags.json) {
+            console.log(JSON.stringify(log, null, 2));
+            break;
+          }
+          if (!log.length) {
+            console.log('发行账本为空：还没有任何提案。');
+            break;
+          }
+          for (const r of log) {
+            const tail = r.type === 'harness.rejected'
+              ? ` ${(r.violations || []).map((v) => `${v.key}:${v.reason}`).join(',')}`
+              : r.type === 'harness.published'
+                ? ` → ${r.version}（审批 ${r.approvedBy}）`
+                : r.type === 'harness.evaluated'
+                  ? ` ${r.passed ? '过门' : `未过门：${(r.reasons || []).join(',')}`}`
+                  : r.type === 'harness.rolled_back'
+                    ? ` ${r.from} → ${r.to}`
+                    : ` ${r.releaseId}`;
+            console.log(`  ${r.at}  ${r.type}${tail}`);
+          }
+          break;
+        }
+        if (sub === 'propose') {
+          if (!flags.config) throw new Error('propose 需要 --config \'{"键":值}\'');
+          const r = H.propose(hw, {
+            config: asJson(flags.config, '--config'),
+            targetFailure: flags.target || 'unclassified',
+            rationale: flags.reason || '',
+          });
+          console.log(`✓ 已提案 ${r.releaseId}（父版本 ${r.parentVersion}）`);
+          console.log('  下一步：stylotrace harness evaluate ' + r.releaseId + " --results '{\"paired\":true,\"heldOut\":true,\"sampleSize\":20,\"heldOutDelta\":0.1,\"regressionRate\":0}'");
+          break;
+        }
+        if (sub === 'evaluate') {
+          const id = positional[1];
+          if (!id) throw new Error('evaluate 需要 releaseId');
+          if (!flags.results) throw new Error('evaluate 需要 --results \'{...}\'');
+          const v = H.evaluate(hw, id, asJson(flags.results, '--results'));
+          console.log(`${v.passed ? '✓ 过门' : '✗ 未过门'}：${v.passed ? '可以发布' : v.reasons.join(', ')}`);
+          break;
+        }
+        if (sub === 'publish') {
+          const id = positional[1];
+          if (!id) throw new Error('publish 需要 releaseId');
+          const r = H.publish(hw, id, { approvedBy: flags.by || '' });
+          console.log(`✓ 已发布 ${r.version}（releaseId ${r.releaseId}，审批 ${flags.by}）`);
+          break;
+        }
+        if (sub === 'rollback') {
+          const r = H.rollback(hw, { toVersion: flags.to || '', reason: flags.reason || '' });
+          console.log(`✓ 已回滚 ${r.from} → ${r.to}`);
+          break;
+        }
+        throw new Error(`harness 未知子命令: ${sub}（可用 status|log|propose|evaluate|publish|rollback）`);
       }
       default:
         console.error(`[stylotrace] 未知命令: ${cmd}`);

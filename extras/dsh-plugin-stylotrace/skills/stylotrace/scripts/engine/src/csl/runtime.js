@@ -19,6 +19,7 @@ import { readCanonical, syncCoreIdea } from './canonical.js';
 import * as hrmr from './hrmr.js';
 import { syncBrief } from './brief.js';
 import { classifyFailure, failureContext } from './failure.js';
+import * as harness from './harness.js';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -46,26 +47,33 @@ export function saveInteraction(workspace, i) {
 }
 
 /**
- * 下一最佳问题（浅层核心算法）：IG − λ·Cost − μ·Intrusion − ρ·Repetition。
- * 同一类型问题被问过越多，分数越低（防重复盘问）。
+ * 下一最佳问题（浅层核心算法）：wIG·IG − λ·Cost − μ·Intrusion − ρ·Repetition。
+ * 权重默认取当前**已发布的 Harness 版本**；没有发布过就是基线默认值。
+ * ρ 现在参与全候选排序，同类问题问过越多越会被其他类型顶掉（修复 2026-10）。
  */
-export function chooseQuestion(state, interaction = newInteractionState(), { lambda = 0.2, mu = 0.25, rho = 0.3 } = {}) {
-  const q = pickQuestion(state);
-  if (!q) return null;
-  const asked = interaction.askedTypes?.[q.type] || 0;
-  const score = q.ig - lambda * q.cost - mu * q.intrusion - rho * asked;
+export function chooseQuestion(state, interaction = newInteractionState(), { workspace = null, lambda, mu, rho, wIg } = {}) {
+  const hw = workspace ? harness.questionWeights(workspace) : {};
+  const weights = {
+    wIg: wIg ?? hw.wIg ?? 1,
+    lambda: lambda ?? hw.lambda ?? 0.2,
+    mu: mu ?? hw.mu ?? 0.25,
+    rho: rho ?? hw.rho ?? 0.3,
+  };
   interaction.askedTypes = interaction.askedTypes || {};
-  interaction.askedTypes[q.type] = asked + 1;
-  return { ...q, score: Number(score.toFixed(4)) };
+  const q = pickQuestion(state, { ...weights, askedTypes: interaction.askedTypes });
+  if (!q) return null;
+  interaction.askedTypes[q.type] = (interaction.askedTypes[q.type] || 0) + 1;
+  return q;
 }
 
 /**
  * 贴题提问（红队 R1–R3）：优先用 LLM 按当前话题/缺口生成问题，
  * 固定库只做兜底；并把问过的**原句**记下来，避免换汤不换药地重复问。
  */
-export async function chooseQuestionSmart(state, interaction = newInteractionState(), { llm = null, topic = '' } = {}) {
+export async function chooseQuestionSmart(state, interaction = newInteractionState(), { llm = null, topic = '', workspace = null } = {}) {
   interaction.askedTexts = interaction.askedTexts || [];
-  const q = await pickQuestionSmart(state, { llm, topic, askedTexts: interaction.askedTexts });
+  const weights = workspace ? harness.questionWeights(workspace) : {};
+  const q = await pickQuestionSmart(state, { llm, topic, askedTexts: interaction.askedTexts, interaction, weights });
   if (!q) return null;
   if (q.question) interaction.askedTexts = [...interaction.askedTexts, q.question].slice(-20);
   interaction.askedTypes = interaction.askedTypes || {};
@@ -405,7 +413,7 @@ export async function runTurn(workspace, { input, state = null, llm = null, sess
     const interaction = readInteraction(workspace);
     // 贴题提问：有 LLM 就按当前话题生成问题；没有/失败则回退固定库（F1 不卡死）
     const topic = s0.coreIdea || readCanonical(workspace, { sessionId }).goal || input;
-    const q = await chooseQuestionSmart(s0, interaction, { llm, topic });
+    const q = await chooseQuestionSmart(s0, interaction, { llm, topic, workspace });
     saveInteraction(workspace, interaction);
     if (q) {
       const evt = {

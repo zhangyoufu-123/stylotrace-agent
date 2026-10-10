@@ -27,7 +27,7 @@ STYLOTRACE_LLM_API_KEY=sk-xxx npm start   # 真实模式：用你自己的 DeepS
 ## 推荐：Railway 一键部署
 
 1. 打开 https://railway.app → 用 GitHub 登录；
-2. New Project → **Deploy from GitHub repo** → 选 `zhangyoufu-123/stylotrace`；
+2. New Project → **Deploy from GitHub repo** → 选 `zhangyoufu-123/stylotrace-agent`；
 3. 部署设置里：**Root Directory** 填 `web`；**Start Command** 填 `npm start`；
 4. 添加环境变量：`STYLOTRACE_LLM_API_KEY=sk-xxx`（必填，真实模式）；
 5. 部署完成后，Railway 会给你一个 `https://<项目名>.up.railway.app` 域名，直接可访问；

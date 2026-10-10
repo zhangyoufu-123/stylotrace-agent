@@ -16,7 +16,7 @@
 1. 打开 https://zeabur.com ，点击 **Sign in**，选择 **GitHub** 登录（免费，无需银行卡）。
 2. 登录后进入控制台，点击 **新建项目**，区域任选（建议选离你近的免费区域）。
 3. 在项目内点击 **创建服务 → 从 GitHub 导入**，授权 Zeabur 访问 GitHub，
-   选择仓库 `zhangyoufu-123/stylotrace`，分支 `main`。
+   选择仓库 `zhangyoufu-123/stylotrace-agent`，分支 `main`。
 4. 构建方式选择 **Dockerfile**（Zeabur 会自动识别仓库根目录的 `Dockerfile`）。
 5. 在服务的 **Variables（环境变量）** 中添加：
 

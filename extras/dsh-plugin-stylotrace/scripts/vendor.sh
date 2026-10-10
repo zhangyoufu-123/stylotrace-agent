@@ -28,7 +28,7 @@ chmod +x "$DEST_SKILL/scripts/engine/bin/stylotrace.js" \
 COMMIT="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
 {
   echo "# Vendored from stylotrace repo (extras/dsh-plugin-stylotrace)"
-  echo "# source: github.com/zhangyoufu-123/stylotrace"
+  echo "# source: github.com/zhangyoufu-123/stylotrace-agent"
   echo "# commit: $COMMIT"
   echo "# 重新生成: bash scripts/vendor.sh"
 } > "$PKG_DIR/VENDORED.md"

@@ -4,7 +4,7 @@
 
 [![MIT](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
 [![npm](https://img.shields.io/npm/v/dsh-plugin-stylotrace?style=flat-square&color=0891b2)](https://www.npmjs.com/package/dsh-plugin-stylotrace)
-[![Agent](https://img.shields.io/badge/Agent-Writing-7C3AED?style=flat-square)](https://github.com/zhangyoufu-123/stylotrace)
+[![Agent](https://img.shields.io/badge/Agent-Writing-7C3AED?style=flat-square)](https://github.com/zhangyoufu-123/stylotrace-agent)
 [![dsh-plugin](https://img.shields.io/badge/dsh-plugin-8A2BE2?style=flat-square)](https://github.com/topics/dsh-plugin)
 
 ## 30 秒了解

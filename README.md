@@ -30,7 +30,7 @@ Codex、Claude Code、OpenCode、DeepSeek Harness、Cursor、Windsurf 等主流 
 dsh plugin --profile web add dsh-plugin-stylotrace
 
 # Codex / Claude Code / OpenCode / Cursor / Windsurf（skill + MCP + CLI）
-curl -fsSL https://raw.githubusercontent.com/zhangyoufu-123/stylotrace/main/install.sh | bash -s -- --all
+curl -fsSL https://raw.githubusercontent.com/zhangyoufu-123/stylotrace-agent/main/install.sh | bash -s -- --all
 ```
 
 装完在新对话里直接说「写一篇关于故乡的散文，要有我的风格」即可。跨宿主接入片段与规则适配见

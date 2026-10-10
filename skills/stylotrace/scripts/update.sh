@@ -11,7 +11,7 @@
 #   [3/3] dev mirror     ~/stylotrace  (STYLOTRACE_MIRROR_DIR 可改；选择性同步，保留你的 .git/node_modules/.env)
 #
 # Env overrides:
-#   STYLOTRACE_REPO_URL      仓库地址（默认 zhangyoufu-123/stylotrace）
+#   STYLOTRACE_REPO_URL      仓库地址（默认 zhangyoufu-123/stylotrace-agent）
 #   STYLOTRACE_INSTALL_DIR   本地克隆目录（默认 ~/.local/share/stylotrace）
 #   STYLOTRACE_MIRROR_DIR    镜像目录（默认 ~/stylotrace）
 set -euo pipefail
@@ -19,7 +19,7 @@ set -euo pipefail
 PROJECT_DIR="${1:-${PWD}}"
 MIRROR_DIR="${STYLOTRACE_MIRROR_DIR:-${HOME}/stylotrace}"
 STORE_DIR="${STYLOTRACE_INSTALL_DIR:-${HOME}/.local/share/stylotrace}"
-REPO_URL="${STYLOTRACE_REPO_URL:-https://github.com/zhangyoufu-123/stylotrace}"
+REPO_URL="${STYLOTRACE_REPO_URL:-https://github.com/zhangyoufu-123/stylotrace-agent}"
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 
 echo "=== Stylotrace 更新：三处安装点一次刷新 ==="

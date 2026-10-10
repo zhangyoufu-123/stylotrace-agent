@@ -3,8 +3,8 @@
 # The skill ships the complete agent engine inside it - no separate CLI needed.
 #
 # Fresh install (either):
-#   curl -fsSL https://raw.githubusercontent.com/zhangyoufu-123/stylotrace/main/install.sh | bash -s -- --all
-#   git clone https://github.com/zhangyoufu-123/stylotrace && cd stylotrace && ./install.sh --all
+#   curl -fsSL https://raw.githubusercontent.com/zhangyoufu-123/stylotrace-agent/main/install.sh | bash -s -- --all
+#   git clone https://github.com/zhangyoufu-123/stylotrace-agent && cd stylotrace-agent && ./install.sh --all
 #
 # Options:
 #   --project <dir>   project-scoped install into <dir>/.codex/skills/stylotrace (default: current dir)
@@ -31,7 +31,7 @@ MCP_CODEX=0
 MCP_ALL=0
 AUTO_SETUP=1
 SETUP_ALL=0
-REPO_URL="${STYLOTRACE_REPO_URL:-https://github.com/zhangyoufu-123/stylotrace}"
+REPO_URL="${STYLOTRACE_REPO_URL:-https://github.com/zhangyoufu-123/stylotrace-agent}"
 STORE_DIR="${STYLOTRACE_INSTALL_DIR:-${HOME}/.local/share/stylotrace}"
 
 usage() {
@@ -321,7 +321,7 @@ DONE (v${VERSION}).
 ${PROJECT_LINE}
 - Dev mirror:    ${MIRROR_DIR:-（未启用 --mirror）}
 ${ROLLBACK_LINE}
-- Docs:          https://github.com/zhangyoufu-123/stylotrace
+- Docs:          https://github.com/zhangyoufu-123/stylotrace-agent
 
 以后更新三处（推荐，skill 自带更新器，随处可跑）:
   bash ${HOME}/.codex/skills/stylotrace/scripts/update.sh [项目目录]

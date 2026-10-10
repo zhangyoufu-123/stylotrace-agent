@@ -16,7 +16,7 @@
 | 产物 | 位置 | 可见性 | 状态 |
 |---|---|---|---|
 | 公开代码仓库 | `github.com/zhangyoufu-123/stylotrace-agent` | **PUBLIC** | 736 文件，匿名可读，无论文/凭据 |
-| 私有主仓库 | `github.com/zhangyoufu-123/stylotrace` | PRIVATE | 论文与竞赛材料 |
+| 私有主仓库 | `github.com/zhangyoufu-123/stylotrace-agent` | PRIVATE | 论文与竞赛材料 |
 | 竞赛提交包 | `docs/competition/提交包/` + zip | 本地 | 8 个文件，五项材料齐 |
 
 **双仓库同步**：`bash scripts/publish-public.sh [--dry-run]`

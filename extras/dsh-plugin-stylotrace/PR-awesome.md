@@ -10,7 +10,7 @@
 ```markdown
 ## What
 
-Add [zhangyoufu-123/stylotrace](https://github.com/zhangyoufu-123/stylotrace) —
+Add [zhangyoufu-123/stylotrace-agent](https://github.com/zhangyoufu-123/stylotrace-agent) —
 the first writing-agent plugin in the DSH ecosystem.
 
 Stylotrace is a deep-collaboration writing agent: it learns the user's personal
@@ -44,7 +44,7 @@ README.md (English):
 ```markdown
 ### Writing & Style
 
-- [zhangyoufu-123/stylotrace](https://github.com/zhangyoufu-123/stylotrace) - Deep-collaboration writing agent (npm: `dsh-plugin-stylotrace`): 43 MCP writing tools with per-user style learning from your edits; auto-extracts a project into reports/articles via `synthesize`; ships a cross-host skill plus web selection-improve UI.
+- [zhangyoufu-123/stylotrace-agent](https://github.com/zhangyoufu-123/stylotrace-agent) - Deep-collaboration writing agent (npm: `dsh-plugin-stylotrace`): 43 MCP writing tools with per-user style learning from your edits; auto-extracts a project into reports/articles via `synthesize`; ships a cross-host skill plus web selection-improve UI.
 ```
 
 README.zh.md (中文):
@@ -52,7 +52,7 @@ README.zh.md (中文):
 ```markdown
 ### Writing & Style
 
-- [zhangyoufu-123/stylotrace](https://github.com/zhangyoufu-123/stylotrace) — 深度协作写作 Agent（npm 包：`dsh-plugin-stylotrace`）：43 个 MCP 写作工具，从你的亲手修改学习个人文风；`synthesize` 自动把项目提炼成报告/文章；附带跨宿主技能包与 Web 端选中改进。
+- [zhangyoufu-123/stylotrace-agent](https://github.com/zhangyoufu-123/stylotrace-agent) — 深度协作写作 Agent（npm 包：`dsh-plugin-stylotrace`）：43 个 MCP 写作工具，从你的亲手修改学习个人文风；`synthesize` 自动把项目提炼成报告/文章；附带跨宿主技能包与 Web 端选中改进。
 ```
 ```
 

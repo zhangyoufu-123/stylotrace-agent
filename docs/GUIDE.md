@@ -6,10 +6,10 @@
 
 ```bash
 # 方式一：一行命令，一次装好三个安装点（全局 skill + 当前项目 skill + 开发镜像 ~/stylotrace）
-curl -fsSL https://raw.githubusercontent.com/zhangyoufu-123/stylotrace/main/install.sh | bash -s -- --all
+curl -fsSL https://raw.githubusercontent.com/zhangyoufu-123/stylotrace-agent/main/install.sh | bash -s -- --all
 
 # 方式二：git clone
-git clone https://github.com/zhangyoufu-123/stylotrace
+git clone https://github.com/zhangyoufu-123/stylotrace-agent
 cd stylotrace && ./install.sh --all --project ~/我的写作项目
 ```
 

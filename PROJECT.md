@@ -183,7 +183,7 @@ scripts/            实验脚本（学习曲线/作者识别/盲评等）
 
 ```bash
 # 1. 安装（装进 Codex/Claude Code/OpenCode/Cursor/Windsurf）
-curl -fsSL https://raw.githubusercontent.com/zhangyoufu-123/stylotrace/main/install.sh | bash -s -- --all
+curl -fsSL https://raw.githubusercontent.com/zhangyoufu-123/stylotrace-agent/main/install.sh | bash -s -- --all
 
 # 2. 或装 DSH 插件
 dsh plugin --profile web add dsh-plugin-stylotrace

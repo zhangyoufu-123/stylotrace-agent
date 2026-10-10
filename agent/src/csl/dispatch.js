@@ -27,9 +27,9 @@ import { readCanonical, canWrite } from './canonical.js';
 export const EXECUTOR_STATUS = Object.freeze({
   write: 'wired',
   outline: 'wired',
+  deliver: 'wired',
   rag: 'not_implemented',
   redteam: 'not_implemented',
-  deliver: 'not_implemented',
   clarify: 'handled_inline', // runTurn 已经产出问题，dispatcher 无需再执行
   checkpoint: 'handled_inline',
   chat: 'handled_inline',
@@ -132,7 +132,37 @@ async function executeOutline(workspace, { cfg = {} } = {}) {
   }
 }
 
-const EXECUTORS = { write: executeWrite, outline: executeOutline };
+/**
+ * 交付 executor（`stop` 动作 → app=deliver）。
+ * 不做任何 LLM 调用：交付是"确认产物完整并交出引用"，不是再写一遍。
+ * 缺稿或还有没写的节，如实报出来——交付一个半成品而不说明，是这类工具最常见的失信方式。
+ */
+async function executeDeliver(workspace) {
+  const draftPath = path.join(workspace, 'draft.md');
+  if (!fs.existsSync(draftPath)) {
+    return { executed: false, reason: 'no_draft', nextAction: 'generate', advice: '还没有成稿，先写作再交付。' };
+  }
+  const text = readDraft(workspace);
+  const state = ws.readState(workspace);
+  const sections = state.outline?.sections || [];
+  const written = Number(state.director?.writeIndex || 0);
+  const remaining = Math.max(0, sections.length - written);
+  return {
+    executed: true,
+    artifact: text,
+    artifactFile: draftPath,
+    chars: text.length,
+    totalSections: sections.length,
+    remaining,
+    complete: remaining === 0,
+    message: remaining
+      ? `已交付当前成稿，但还有 ${remaining} 节没写——这不是完整稿。`
+      : '文章已交付。要修改请直接说（方向或具体哪一句）。',
+    next: 'point-edit / restyle / redteam',
+  };
+}
+
+const EXECUTORS = { write: executeWrite, outline: executeOutline, deliver: executeDeliver };
 
 /**
  * 执行一个应用动作。永远不抛异常——失败以 `executed:false` + 原因返回，
@@ -159,6 +189,9 @@ export function renderDispatch(d) {
   if (d.executed) {
     if (d.executor === 'outline') {
       return `已生成大纲：${d.sectionCount} 节\n  ${(d.headings || []).join(' / ')}`;
+    }
+    if (d.executor === 'deliver') {
+      return `${d.message}（成稿 ${d.chars} 字，共 ${d.totalSections} 节）\n  ${d.artifactFile}`;
     }
     const lines = [`已写入 ${d.artifactFile}（第 ${d.sectionFrom + 1}–${d.sectionTo + 1} 节 / 共 ${d.totalSections} 节，${d.wroteChars} 字）`];
     if (d.remaining > 0) lines.push(`还剩 ${d.remaining} 节：再调用一次 runTask 继续`);

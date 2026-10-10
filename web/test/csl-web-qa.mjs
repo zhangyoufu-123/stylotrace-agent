@@ -61,6 +61,10 @@ const html = fs.readFileSync(path.join(REPO, 'web', 'public', 'index.html'), 'ut
 const js = fs.readFileSync(path.join(REPO, 'web', 'public', 'assets', 'app.js'), 'utf8');
 assert(html.includes('cslStrip') && html.includes('cslRunBtn'), '前端含认知状态卡与"认知一轮"按钮');
 assert(js.includes('refreshCslState') && js.includes('/api/csl/turn'), '前端调用统一认知入口');
+// 应用派发契约（P0.5）：前端必须显示"这一轮到底做成了什么 / 为什么没做"，
+// 否则「应用=write」只是一句话，用户看不到产物有没有落盘。
+assert(js.includes('const ex = r.executed') && js.includes('未执行：'), '前端消费应用派发结果');
+assert(js.includes('executor_not_implemented'), '前端对未实现的 executor 如实说明，不假装做过');
 
 // 1) 新建会话（不带 topic：验证"无核心 → Writer 门 BLOCK"）
 const start = await call('/api/start', 'POST', {});

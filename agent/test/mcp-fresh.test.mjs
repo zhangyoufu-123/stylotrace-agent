@@ -116,6 +116,20 @@ try {
   assert.ok(payload?.kind, '带 quote 调用必须正常返回决策结果');
   console.log('PASS 带 quote 的 agent_step 正常返回（引用的端到端验证见 quote-input.test.mjs）');
 
+  // 4.5) csl_turn 必须回报应用派发结果（P0.5 契约）：
+  // 宿主 agent 要能知道这一轮到底做成了什么、或为什么没做；
+  // 否则 MCP 侧和 CLI 一样，只能看到"应用=write"这种没有下文的字符串。
+  const turn = await callLlmTool('csl_turn', { workspace: WS, input: '我想写一篇关于故乡门槛的散文', session: 's1' });
+  const turnText = String(turn.result?.content?.[0]?.text || '');
+  let turnPayload = null;
+  try {
+    turnPayload = JSON.parse(turnText);
+  } catch {}
+  assert.ok(turnPayload && 'executed' in turnPayload, `csl_turn 必须返回 executed，实际：${turnText.slice(0, 200)}`);
+  assert.ok('artifact' in turnPayload, 'csl_turn 必须返回 artifact（未执行时为 null，不得是拼接串）');
+  assert.equal(typeof turnPayload.dispatchNote, 'string', 'csl_turn 必须给出人可读的派发说明');
+  console.log(`PASS csl_turn 回报应用派发（executor=${turnPayload.executed?.executor} · executed=${turnPayload.executed?.executed}）`);
+
   assert.ok(!stderr.trim(), `stderr 应为空：${stderr.slice(0, 200)}`);
   console.log('PASS MCP 全程无 stderr 噪声');
 } catch (e) {

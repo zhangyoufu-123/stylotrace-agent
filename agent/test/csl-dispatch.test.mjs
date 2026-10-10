@@ -49,7 +49,26 @@ assert.equal(r3.reason, 'writer_gate', `应被写作门拦截，实际 ${r3.reas
 const r4 = await d.dispatchApp(w3, { app: 'review', executor: 'redteam' });
 assert.equal(r4.executed, false);
 assert.equal(r4.reason, 'executor_not_implemented', '未实现的 executor 不许伪装成功');
-assert.ok(d.EXECUTOR_STATUS.rag === 'not_implemented' && d.EXECUTOR_STATUS.deliver === 'not_implemented');
+assert.equal(d.EXECUTOR_STATUS.rag, 'not_implemented');
+assert.equal(d.EXECUTOR_STATUS.deliver, 'wired', 'deliver 已接线（不做 LLM 调用）');
+
+// ── F6 交付：没有成稿就不许说"已交付" ──
+const r6 = await d.dispatchApp(w3, { app: 'deliver', executor: 'deliver' });
+assert.equal(r6.executed, false);
+assert.equal(r6.reason, 'no_draft', '没有成稿时交付必须拒绝，而不是返回空交付');
+
+// ── F7 交付：有稿但还有没写的节 → 交付但明确标注不完整 ──
+const w7 = mk('deliver-partial');
+fs.writeFileSync(path.join(w7, 'draft.md'), '## 一、门槛的高度\n\n门槛原来是齐膝高的。\n');
+const st7 = ws.readState(w7);
+st7.outline = { sections: [{ heading: '一、门槛' }, { heading: '二、离开' }] };
+st7.director = { ...(st7.director || {}), writeIndex: 1 };
+ws.writeState(w7, st7);
+const r7 = await d.dispatchApp(w7, { app: 'deliver', executor: 'deliver' });
+assert.equal(r7.executed, true);
+assert.equal(r7.complete, false, '还有 1 节没写，不得声称是完整稿');
+assert.ok(r7.message.includes('还有 1 节没写'), `交付话术要说明不完整：${r7.message}`);
+assert.ok(r7.artifact.includes('门槛'), '交付要带上成稿内容');
 
 // ── F5 内联动作不重复执行 ──
 const r5 = await d.dispatchApp(w3, { app: 'ask', executor: 'clarify' });
@@ -72,4 +91,4 @@ const inner = await actions.dispatch('generate', jt, {});
 assert.equal(inner.result.artifact, 'A。B');
 assert.notEqual(out.artifact, inner.result.artifact, '内部拼接串不得冒充产品产物');
 
-console.log('PASS csl-dispatch（F1 缺大纲/F2 有核心无大纲/F3 写作门/F4 未实现明说/F5 内联 + 产物只来自 executor）');
+console.log('PASS csl-dispatch（F1 缺大纲/F2 有核心无大纲/F3 写作门/F4 未实现明说/F5 内联/F6 无稿不交付/F7 半成品如实标注 + 产物只来自 executor）');

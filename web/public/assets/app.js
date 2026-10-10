@@ -148,8 +148,34 @@ async function cslRunOnce() {
     if (r.question) lines.push(`追问：${r.question}`);
     if (r.actionTrace?.length) lines.push(`动作轨迹：${r.actionTrace.map((t) => t.action).join(' → ')}`);
     lines.push(`状态：v${r.stateVersion} · 核心：${r.state?.coreIdea ? String(r.state.coreIdea).slice(0, 20) : '未确认'}`);
+    // 应用派发结果：这一轮到底做成了什么（或为什么没做）。
+    // 没有这段的话，"应用=write" 就只是一句话——用户看不到产物到底有没有落盘。
+    const ex = r.executed || null;
+    if (ex?.executed) {
+      if (ex.executor === 'write') {
+        lines.push(`执行：已写入成稿 · 第 ${ex.sectionFrom + 1}–${ex.sectionTo + 1} 节 / 共 ${ex.totalSections} 节（+${ex.wroteChars} 字）`);
+        lines.push(ex.remaining > 0 ? `还剩 ${ex.remaining} 节：再跑一轮继续` : '全部章节已写完');
+      } else if (ex.executor === 'outline') {
+        lines.push(`执行：已生成大纲 ${ex.sectionCount} 节`);
+      } else {
+        lines.push(`执行：${ex.executor} 已完成`);
+      }
+    } else if (ex && ex.reason && ex.reason !== 'handled_inline') {
+      const why = {
+        no_outline: '还没有大纲，先跑一轮让它出大纲',
+        outline_gate: `大纲素材门槛未过：${ex.missing || ''}`,
+        writer_gate: `写作门拦截：${ex.missing || ''}`,
+        write_failed: `写作失败：${ex.missing || ''}`,
+        no_draft: '还没有成稿',
+        already_has_outline: '已有大纲，下一步是写作',
+        executor_not_implemented: `「${ex.executor}」这个执行器还没实现（不假装做过）`,
+      }[ex.reason] || ex.reason;
+      lines.push(`未执行：${why}`);
+    }
     addMsg('bot', `<div class="csl-reply">${lines.map((l) => esc(l)).join('<br>')}</div>`);
     refreshCslState();
+    // 这一轮真的写了稿 → 同步刷新成稿面板，让用户直接看到落盘内容
+    if (ex?.executed && ex.executor === 'write') refreshPanel();
   } catch (e) {
     w.remove();
     addMsg('bot', `<span style="color:var(--bad)">${esc(e.message)}</span>`);

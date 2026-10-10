@@ -48,12 +48,13 @@
 README / install.sh / site / docs / extras 共 22 个文件的私有仓库地址已改为公开仓库；
 守卫通过（无论文、无密钥、无本机路径）；公开仓库 HEAD `33f2059`。
 
-**P0.5 — Writer 接入运行周期 [修正·新增]** 🟡 主链已完成（§5.1）
-已选路线 A：`runTask` 真的派发 `ACTION_APP_MAP` 的 executor。`write` / `outline` 已接线并端到端实测；
-`rag` / `redteam` / `deliver` 明示未实现。
-剩余：Web 与 MCP 的调用方契约要跟上（现在它们会收到 `executed` / `artifact` / `dispatchNote`，
-Web 的 `/api/csl/turn` 目前只把 `r` 原样返回，尚未据此更新前端展示；MCP 同理）。
-验收：`stylotrace run` 在具备大纲与核心主张的工作区上产出可读产物 ✅；有端到端测试断言产物非空且来自 Writer 而非字符串拼接 ✅。
+**P0.5 — Writer 接入运行周期 [修正·新增]** ✅ 已完成
+已选路线 A：`runTask` 真的派发 `ACTION_APP_MAP` 的 executor。
+`write` / `outline` / `deliver` 已接线并实测；`rag` / `redteam` 明示未实现。
+Web 前端已消费 `executed` / `artifact` / `dispatchNote` 并在写稿后刷新成稿面板；
+MCP `csl_turn` 同样回报派发结果（`mcp-fresh` 有断言守住）。
+验收：`stylotrace run` 在具备大纲与核心主张的工作区上产出可读产物 ✅；
+端到端真实模型实测产出 306 字正文节 ✅；有测试断言 artifact 只来自 executor、绝不为拼接串 ✅。
 
 **P1 — 版本谱系进入 Canonical State**
 验收：六个维度可追踪；H0/H1 混合运行可正确归因；session 隔离与版本冲突测试通过。
@@ -108,7 +109,8 @@ Web 的 `/api/csl/turn` 目前只把 `r` 原样返回，尚未据此更新前端
 
 - `write` executor：从 `draft.md` 已写到位置继续，每次写一节，返回产物、进度与剩余节数。
 - `outline` executor：`write` 的前置条件；素材门槛没过就如实报缺什么，不硬撑。
-- `rag` / `redteam` / `deliver`：**明示 `not_implemented`**，不伪装成功。
+- `deliver` executor：不做 LLM 调用；没有成稿就拒绝交付，还有没写的节就**明确标注"这不是完整稿"**。
+- `rag` / `redteam`：**明示 `not_implemented`**，不伪装成功。
 - `clarify` / `checkpoint` / `chat`：由认知循环内联处理，不重复执行。
 
 `runTask` 新增 `executed` / `artifact` / `dispatchNote` 三个字段。**关键不变量**：

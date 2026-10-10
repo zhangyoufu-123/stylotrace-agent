@@ -157,7 +157,7 @@ export const CAPABILITIES = [
     entry: { cli: 'stylotrace run', web: 'POST /api/csl/turn', api: 'POST /api/csl/turn' },
     status: 'live',
     evidence:
-      'ACTION_APP_MAP 声明的 executor 由 csl/dispatch.js 真正执行；write/outline 已接线，rag/redteam/deliver 明示未实现；' +
+      'ACTION_APP_MAP 声明的 executor 由 csl/dispatch.js 真正执行；write/outline/deliver 已接线，rag/redteam 明示未实现；' +
       '产物只来自 Writer 写入的 draft.md，executor 未执行时 artifact 为 null，绝不返回认知循环里的拼接串（csl-dispatch 测试）',
   },
   {

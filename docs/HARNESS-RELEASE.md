@@ -1,6 +1,7 @@
 # Harness 版本化发行（冻结模型、进化外壳）
 
 **日期**：2026-10-10　**状态**：Phase D 核心已落地；Phase E（自动提案）未做
+**对应理论**：ECH-S v1.1（`csla/18-harness-evolution.md`）
 
 对应规范《Stylotrace × CSLA — 冻结模型、进化 Harness v1.0》。本文只记录**核实过的事实**，
 以及实现时必须先回答的问题。
@@ -56,7 +57,10 @@
 - **冻结区 9 类**（`state.schema` / `auth.*` / `tool.permissions` / `events.integrity` /
   `safety.*` / `evaluator.*` / `eval.heldOutSet` / `gate.frozenZone` / `evidence.*`）。
   执法靠白名单；冻结清单的作用是让"什么不许动"写在代码里，并有结构性测试断言两者永不相交。
-- **发布门 v0**：配对对照 + 留出集 + 样本量 ≥ 8 + 留出集提升 ≥ 0.02 + 回归率 = 0。
+- **发布门 v0**：配对对照 + 留出集 + 样本量 ≥ 8 + 留出集提升 ≥ 0.02 + 回归率 = 0
+  + **成本增幅 ≤ 0.25** + **证据按阶梯**（`llm_judge` 不得单独作证）。
+- **权限边界（`AUTHORITY`）**：Harness 存在用户自己的工作区，循环天然只影响一位作者；
+  影响所有人的改动属于代码发布，**本模块不做灰度**——那是作用域不同，不是省事。
 - **发行流程**：`propose → evaluate → publish / rollback`，每次提案/拒收/评估/发布/回滚都进
   `protocol/harness/releases.jsonl`。被拒的候选**留作负证据**，不静默丢弃。
 - **版本叠加**：新版本发布时把父版本配置合并进来。否则每发一版都会静默回退掉之前所有改进
@@ -80,7 +84,7 @@ differentiate 已问过 10 次（ρ=0.3）
 
 这正好对应规范 §9.2 里的 `Redundant Question`。现在 ρ 参与**全候选排序**。
 
-### 4.4 一个诚实的发现：可调参数大部分是惰性的
+### 4.4 一个诚实的发现：可调参数大部分是惰性的（已修）
 
 现有问题候选库里，所有候选的 `cost` 都等于 1，且 `ig` 与 `intrusion` 的排序完全一致
 （ig 高的侵入性也低）。这导致：
@@ -92,6 +96,23 @@ differentiate 已问过 10 次（ρ=0.3）
 
 也就是说 13 个可进化键里，目前只有 1 个对浅层提问有实际作用。要么扩充候选库，让 ig 与侵入性
 出现分歧（例如"高价值但私密的问题"），要么不要假装另外三个是可调的。
+
+**2026-10-10 修掉了。** 按理论 v1.1 §2 的「可优化性前提」，候选库里补进了
+`own-story`（信息增益最高，但要作者回忆具体经历、也更私密、回答成本 2.5）和
+`personal-fact`（增益更高但侵入性 0.75），与原有的低负担候选形成真实张力。
+现在四个权重**全部经过探针证明是活的**：
+
+```
+✓ wIg      wIg=0 → common-view ／ wIg=5 → own-story
+✓ lambda   lambda=0 → own-story ／ lambda=0.15 → differentiate
+✓ mu       mu=0 → differentiate ／ mu=2 → common-view
+✓ rho      rho=0 → differentiate ／ rho=0.15 → why
+```
+
+默认取值下的选择行为与修复前一致（`{}`→clarify、`{coreIdea}`→differentiate、
+`{coreIdea,hypotheses}`→counterexample），所以不是靠改默认值"修"的。
+`stylotrace harness` 每次都会把这个探针结果打出来——**下次谁再把某个键写成可调，
+探针会立刻显示它是不是装饰品。**
 
 ## 5. 怎么用
 
@@ -111,3 +132,7 @@ stylotrace harness rollback --to H0
 - **Web / API 入口**：`harness` 目前只有 CLI（治理面属于离线运维，这是有意的）。
 - **Claim Ledger**：认知门缺 claim 级结构。
 - **B0–B4 对照**：规范 §11 的四层评估一个都没跑。
+- **其余 10 个可进化键还没做活性探针**：现在只有提问权重那一组被证明是活的，
+  检索条数 / 候选数 / 动作权重很可能同样是装饰品，需要各自的探针才能确认。
+- **投入 Tension 的候选是手工调的**：`own-story` / `personal-fact` 的 ig / cost / intrusion
+  是我按手感定的数值，没有实测依据。它们的作用是让权重"有张力"，不是"调好了"。

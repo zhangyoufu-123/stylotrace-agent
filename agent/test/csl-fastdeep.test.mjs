@@ -12,12 +12,19 @@ const rt = await import(path.join(HERE, '..', 'src', 'csl', 'runtime.js'));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-fastdeep-'));
 const w = ws.ensureWorkspace(path.join(tmp, 'w'), { create: true });
 
-// L1：q* 去重复惩罚——同一问题类型被问过越多分越低
+// L1：q* 去重复惩罚——同一问题类型被问过，就该被别的类型顶掉（而不只是分数变低）
+// 旧断言写的是 `askedTypes[q1.type] === 2`，那正是"ρ 只改显示分数、改不了选择"这个 bug 的化石：
+// 系统会把同一类问题反复问，只是分数一路走低。2026-10 修正后 ρ 参与全候选排序。
 const i = rt.newInteractionState();
 const q1 = rt.chooseQuestion({ coreIdea: 'x', hypotheses: ['h'] }, i);
+assert.ok(q1 && i.askedTypes[q1.type] === 1);
 const q2 = rt.chooseQuestion({ coreIdea: 'x', hypotheses: ['h'] }, i);
-assert.ok(q1 && q2 && q2.score < q1.score, `重复应压低分数：${q1.score} > ${q2.score}`);
-assert.ok(i.askedTypes[q1.type] === 2);
+assert.ok(q2, '第二次仍要给出问题（不许卡死）');
+assert.notEqual(q2.type, q1.type, `同类问过之后必须换一类，而不是继续问 ${q1.type}`);
+assert.ok(i.askedTypes[q1.type] === 1 && i.askedTypes[q2.type] === 1);
+// 关掉 ρ 时，第一问仍然是同一类 → 证明换类确实来自重复惩罚
+const noPenalty = rt.chooseQuestion({ coreIdea: 'x', hypotheses: ['h'] }, { askedTypes: {} }, { rho: 0 });
+assert.equal(noPenalty.type, q1.type);
 
 // L3：ChooseHowToThink 按状态缺口选动作
 assert.equal(rt.chooseCognitiveAction({}).action, 'askHuman');

@@ -285,8 +285,11 @@ const HELP = `Stylotrace Agent v0.23 — 完整写作 Agent（导演模式 · �
   stylotrace harness propose --config '{"键":值}' [--target 故障类型] [--reason 说明]
                                     提案一个候选配置（只允许可进化白名单里的键，碰冻结区直接拒收）
   stylotrace harness evaluate <releaseId> --results '{"paired":true,"heldOut":true,
-                                    "sampleSize":20,"heldOutDelta":0.1,"regressionRate":0}'
-                                    过发布门：配对对照 + 留出集 + 样本量 ≥8 + 零回归
+                                    "sampleSize":20,"heldOutDelta":0.1,"regressionRate":0,
+                                    "costDelta":0.1,"evidence":"mechanical"}'
+                                    过发布门：配对对照 + 留出集 + 样本量 ≥8 + 零回归 + 成本增幅 ≤0.25
+                                    证据按阶梯：mechanical > recomputable > blind_human > llm_judge
+                                    （llm_judge 不得单独作证，须另带 corroboratedBy）
   stylotrace harness publish <releaseId> --by 审批人     发布（四件事同时成立才写）
   stylotrace harness rollback [--to H0] [--reason 说明]   回滚到历史版本（不存在则拒绝且保持现状）
   stylotrace cadence "<文本>" [--json|--ssml|--meter|--apply]
@@ -2151,17 +2154,24 @@ export async function runCli(argv, io = {}) {
 
         if (sub === 'status') {
           if (flags.json) {
+            const EL = await import('./csl/elicit.js');
             console.log(JSON.stringify({
               version: H.currentVersion(hw),
               current: H.current(hw),
               effective: H.activeConfig(hw),
               gate: H.GATE_V0,
+              authority: H.AUTHORITY,
+              evidenceLadder: H.EVIDENCE_LADDER.map((e) => e.id),
+              weightLiveness: EL.weightLiveness(),
               evolvable: H.EVOLVABLE_KEYS,
               frozen: H.FROZEN_ZONE,
             }, null, 2));
             break;
           }
           console.log(H.renderHarness(hw));
+          console.log('');
+          const EL = await import('./csl/elicit.js');
+          console.log(EL.renderLiveness());
           break;
         }
         if (sub === 'log') {
@@ -2196,7 +2206,11 @@ export async function runCli(argv, io = {}) {
             rationale: flags.reason || '',
           });
           console.log(`✓ 已提案 ${r.releaseId}（父版本 ${r.parentVersion}）`);
-          console.log('  下一步：stylotrace harness evaluate ' + r.releaseId + " --results '{\"paired\":true,\"heldOut\":true,\"sampleSize\":20,\"heldOutDelta\":0.1,\"regressionRate\":0}'");
+          console.log(
+            '  下一步：stylotrace harness evaluate ' + r.releaseId +
+            " --results '{\"paired\":true,\"heldOut\":true,\"sampleSize\":20,\"heldOutDelta\":0.1,\"regressionRate\":0,\"costDelta\":0.1,\"evidence\":\"mechanical\"}'",
+          );
+          console.log('  证据种类：mechanical > recomputable > blind_human > llm_judge（llm_judge 需 --results 里带 corroboratedBy 才作数）');
           break;
         }
         if (sub === 'evaluate') {

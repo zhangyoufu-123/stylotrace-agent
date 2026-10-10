@@ -12,6 +12,7 @@ const { ensureWorkspace } = await import(path.join(HERE, '..', 'src', 'workspace
 const h = await import(path.join(HERE, '..', 'src', 'csl', 'harness.js'));
 const rt = await import(path.join(HERE, '..', 'src', 'csl', 'runtime.js'));
 const ev = await import(path.join(HERE, '..', 'src', 'csl', 'events.js'));
+const el = await import(path.join(HERE, '..', 'src', 'csl', 'elicit.js'));
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'csl-harness-'));
 const mk = (name) => ensureWorkspace(path.join(tmp, name), { create: true });
@@ -100,13 +101,30 @@ assert.equal(h.currentVersion(w0), 'H0', '拒收不得改变当前版本');
 
 // ── 发布门 ──
 const J = h.judge;
-assert.equal(J({ paired: true, heldOut: true, sampleSize: 3, heldOutDelta: 0.5, regressionRate: 0 }).passed, false);
-assert.ok(J({ paired: true, heldOut: true, sampleSize: 3, heldOutDelta: 0.5, regressionRate: 0 }).reasons.some((r) => r.startsWith('sample_too_small')));
-assert.equal(J({ paired: false, heldOut: true, sampleSize: 20, heldOutDelta: 0.5, regressionRate: 0 }).passed, false);
-assert.equal(J({ paired: true, heldOut: false, sampleSize: 20, heldOutDelta: 0.5, regressionRate: 0 }).passed, false);
-assert.equal(J({ paired: true, heldOut: true, sampleSize: 20, heldOutDelta: 0.01, regressionRate: 0 }).passed, false);
-assert.equal(J({ paired: true, heldOut: true, sampleSize: 20, heldOutDelta: 0.5, regressionRate: 0.1 }).passed, false);
-assert.equal(J({ paired: true, heldOut: true, sampleSize: 20, heldOutDelta: 0.5, regressionRate: 0 }).passed, true);
+const GOOD = { paired: true, heldOut: true, sampleSize: 20, heldOutDelta: 0.5, regressionRate: 0, costDelta: 0.1, evidence: 'mechanical' };
+assert.equal(J({ ...GOOD, sampleSize: 3 }).passed, false);
+assert.ok(J({ ...GOOD, sampleSize: 3 }).reasons.some((r) => r.startsWith('sample_too_small')));
+assert.equal(J({ ...GOOD, paired: false }).passed, false);
+assert.equal(J({ ...GOOD, heldOut: false }).passed, false);
+assert.equal(J({ ...GOOD, heldOutDelta: 0.01 }).passed, false);
+assert.equal(J({ ...GOOD, regressionRate: 0.1 }).passed, false);
+// 成本进门槛：不能靠多花 token 换指标
+assert.equal(J({ ...GOOD, costDelta: 0.9 }).passed, false);
+assert.ok(J({ ...GOOD, costDelta: 0.9 }).reasons.some((r) => r.startsWith('cost_too_high')));
+assert.equal(J({ ...GOOD, costDelta: undefined }).passed, false);
+// 评估器阶梯：模型评审不得单独作证
+assert.equal(J({ ...GOOD, evidence: 'llm_judge' }).passed, false);
+assert.ok(J({ ...GOOD, evidence: 'llm_judge' }).reasons.includes('llm_judge_cannot_stand_alone'));
+assert.equal(J({ ...GOOD, evidence: 'llm_judge', corroboratedBy: 'mechanical' }).passed, true);
+assert.equal(J({ ...GOOD, evidence: undefined }).passed, false);
+assert.equal(J(GOOD).passed, true);
+
+// ── 可优化性前提：每个可调权重都必须被探针证明"真的能改变选择" ──
+const live = el.weightLiveness();
+for (const key of ['wIg', 'lambda', 'mu', 'rho']) {
+  assert.ok(live[key].live, `${key} 必须被证明是活的（否则就是装饰品）`);
+  assert.ok(live[key].example && live[key].example.flips.length >= 2, `${key} 要给出实际翻转证据`);
+}
 
 // ── F3：未评估 / 未过门不许发布 ──
 const wA = mk('flow');
@@ -119,7 +137,7 @@ assert.throws(() => h.publish(wA, c1.releaseId, { approvedBy: 'human' }), /未�
 assert.equal(h.currentVersion(wA), 'H0', '未过门的发布不得生效');
 
 // ── 正常发布 ──
-assert.equal(h.evaluate(wA, c1.releaseId, { paired: true, heldOut: true, sampleSize: 24, heldOutDelta: 0.11, regressionRate: 0 }).passed, true);
+assert.equal(h.evaluate(wA, c1.releaseId, { paired: true, heldOut: true, sampleSize: 24, heldOutDelta: 0.11, regressionRate: 0, costDelta: 0.08, evidence: 'mechanical' }).passed, true);
 assert.throws(() => h.publish(wA, c1.releaseId, {}), /审批人/);
 const pub = h.publish(wA, c1.releaseId, { approvedBy: 'zhangyoufu' });
 assert.equal(pub.version, 'H1');
@@ -129,7 +147,7 @@ assert.deepEqual(h.questionWeights(wA), { wIg: 1, lambda: 0.2, mu: 0.25, rho: 0.
 
 // ── H1 → H2：第二版叠加 ──
 const c2 = h.propose(wA, { config: { 'question.weights.cost': 0.35 }, targetFailure: 'redundant_question' });
-h.evaluate(wA, c2.releaseId, { paired: true, heldOut: true, sampleSize: 30, heldOutDelta: 0.05, regressionRate: 0 });
+h.evaluate(wA, c2.releaseId, { paired: true, heldOut: true, sampleSize: 30, heldOutDelta: 0.05, regressionRate: 0, costDelta: 0.08, evidence: 'recomputable' });
 assert.equal(h.publish(wA, c2.releaseId, { approvedBy: 'zhangyoufu' }).version, 'H2');
 assert.equal(h.activeConfig(wA)['question.weights.cost'], 0.35);
 assert.equal(h.activeConfig(wA)['question.weights.repetition'], 0.1, '第二版应保留第一版未被覆盖的项');
@@ -158,7 +176,7 @@ assert.equal(rt.chooseQuestion(state, { askedTypes: { differentiate: 1 } }, { rh
 // ── 端到端：已发布的 Harness 真的改变运行时行为 ──
 const wC = mk('effect');
 const cE = h.propose(wC, { config: { 'question.weights.repetition': 0 }, targetFailure: 'redundant_question' });
-h.evaluate(wC, cE.releaseId, { paired: true, heldOut: true, sampleSize: 20, heldOutDelta: 0.3, regressionRate: 0 });
+h.evaluate(wC, cE.releaseId, { paired: true, heldOut: true, sampleSize: 20, heldOutDelta: 0.3, regressionRate: 0, costDelta: 0.05, evidence: 'mechanical' });
 h.publish(wC, cE.releaseId, { approvedBy: 'zhangyoufu' });
 assert.equal(
   rt.chooseQuestion(state, { askedTypes: { differentiate: 1 } }, { workspace: wC }).type,

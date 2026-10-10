@@ -166,7 +166,8 @@ export const CAPABILITIES = [
     status: 'live',
     evidence:
       '可进化白名单 13 键 + 冻结区 9 类；发布门要求配对对照、留出集、样本量 ≥8、零回归，' +
-      '且必须有审批人；事件带 harness_version；已发布版本真的改变提问选择（csl-harness 测试）',
+      '成本增幅 ≤0.25、证据按阶梯（llm_judge 不得单独作证），且必须有审批人；' +
+      '事件带 harness_version；权重活性探针证明 4 个权重真的能改变选择；已发布版本真的改变行为（csl-harness 测试）',
   },
   {
     id: 'harness-evolution',

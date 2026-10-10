@@ -35,6 +35,23 @@ function candidates(state) {
       cost: 1,
       intrusion: 0.35,
     });
+    // 下面两条是**故意**和上面形成张力的：信息增益更高，但要作者付出更多（回忆具体经历），
+    // 也更私密。没有这种张力，λ 和 μ 就是装饰品——怎么调都改不了选择（2026-10 实测发现）。
+    // 设计规则：每加一个可调权重，必须同时给出让它往两个方向都可能胜出的状态/候选。
+    list.push({
+      type: 'own-story',
+      question: '你自己身上有没有一件具体的事，让你得出这个判断？说细节就行。',
+      ig: 0.98,
+      cost: 2.5,
+      intrusion: 0.65,
+    });
+    list.push({
+      type: 'common-view',
+      question: '一般人对这件事通常怎么看？',
+      ig: 0.6,
+      cost: 1,
+      intrusion: 0.15,
+    });
     return list;
   }
   if (!s.evidence?.length) {
@@ -44,6 +61,13 @@ function candidates(state) {
       ig: 0.7,
       cost: 1,
       intrusion: 0.4,
+    });
+    list.push({
+      type: 'personal-fact',
+      question: '有没有一件你自己经历过的、或者亲眼见过的事，能支撑这个判断？',
+      ig: 0.76,
+      cost: 1,
+      intrusion: 0.75,
     });
     return list;
   }
@@ -133,6 +157,15 @@ const BANK_VARIANTS = {
   ],
   boundary: ['这个观点在哪里不成立？它的边界是什么？'],
   implication: ['如果这个想法是对的，会意味着什么？'],
+  'own-story': [
+    '你自己身上有没有一件具体的事，让你得出这个判断？说细节就行。',
+    '这个判断是从你哪一次亲身经历里长出来的？',
+  ],
+  'common-view': ['一般人对这件事通常怎么看？', '这件事大多数人的第一反应是什么？'],
+  'personal-fact': [
+    '有没有一件你自己经历过的、或者亲眼见过的事，能支撑这个判断？',
+    '你亲眼见到的哪件事，让你觉得这个判断站得住？',
+  ],
 };
 
 /**
@@ -201,4 +234,70 @@ export function captureCoreIdea(state, answer) {
   const text = String(answer || '').trim();
   if (!text) throw new Error('captureCoreIdea requires a non-empty answer');
   return { coreIdea: text, intent: state.intent || '' };
+}
+
+/**
+ * 权重活性探针（理论 v1.1「可优化性前提」的机械验证）。
+ *
+ * 一个可调权重只有在"存在一组状态，让它往两个方向都能胜出"时才叫可调；
+ * 否则它只是装饰品——写进配置里很好看，改了没有任何效果。
+ * 2026-10 之前 λ 和 μ 就是这种情况：所有候选 cost 相同、ig 与 intrusion 排序一致，
+ * 两个权重怎么调都改不了选择。本函数把这件事变成可执行、可复查的判断。
+ *
+ * 做法：枚举所有可达候选集，对每个权重扫一组取值，看胜者是否真的会变。
+ */
+export function weightLiveness({ grid = [0, 0.15, 0.3, 0.6, 1, 2, 5] } = {}) {
+  const states = [
+    { label: 'no-core-idea', state: {} },
+    { label: 'no-hypotheses', state: { coreIdea: 'x' } },
+    { label: 'no-evidence', state: { coreIdea: 'x', hypotheses: ['h'] } },
+    { label: 'no-decisions', state: { coreIdea: 'x', hypotheses: ['h'], evidence: ['e'] } },
+  ];
+  const base = { wIg: 1, lambda: 0.2, mu: 0.25, rho: 0 };
+  const out = {};
+
+  for (const key of ['wIg', 'lambda', 'mu']) {
+    out[key] = { live: false, example: null };
+    for (const { label, state } of states) {
+      const winners = new Map();
+      for (const v of grid) {
+        const q = pickQuestion(state, { ...base, [key]: v });
+        const type = q ? q.type : null;
+        if (!winners.has(type)) winners.set(type, v);
+      }
+      if (winners.size > 1) {
+        out[key] = {
+          live: true,
+          example: { state: label, flips: [...winners].map(([type, v]) => `${key}=${v} → ${type}`) },
+        };
+        break;
+      }
+    }
+  }
+
+  // ρ 只作用于"同类问题已问过多少次"，必须带 askedTypes 才生效
+  const asked = new Map();
+  for (const v of grid) {
+    const q = pickQuestion({ coreIdea: 'x' }, { ...base, rho: v, askedTypes: { differentiate: 1 } });
+    const type = q ? q.type : null;
+    if (!asked.has(type)) asked.set(type, v);
+  }
+  out.rho = {
+    live: asked.size > 1,
+    example: { state: 'no-hypotheses + 同类已问 1 次', flips: [...asked].map(([type, v]) => `rho=${v} → ${type}`) },
+  };
+  return out;
+}
+
+/** 把活性探针的结果渲染成人能读的一段。 */
+export function renderLiveness(live = weightLiveness()) {
+  const lines = ['  可优化性前提（权重活性探针）：'];
+  for (const [key, v] of Object.entries(live)) {
+    lines.push(`    ${v.live ? '✓' : '✗'} ${key.padEnd(7)} ${v.live ? '活的' : '装饰品——改了不改变任何选择'}`);
+    if (v.live && v.example?.flips?.length) {
+      lines.push(`        ${v.example.state}: ${v.example.flips.slice(0, 2).join(' ／ ')}`);
+    }
+  }
+  lines.push('    规则：可调权重必须有"两个方向都能胜出"的状态，否则不该出现在可进化白名单里。');
+  return lines.join('\n');
 }

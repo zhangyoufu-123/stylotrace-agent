@@ -86,13 +86,44 @@ export const DEFAULTS = Object.freeze({
   'prompt.systemSuffix': '',
 });
 
-/** 发布门（v0）。数值是保守起点，不是"调好的参数"。 */
+/**
+ * 权限边界（理论 v1.1 第 1 条：**自动循环的权限由写入范围决定**）。
+ *
+ * 本 Harness 存在**用户自己的工作区**里（`protocol/harness/`），所以它天然只影响这一位作者。
+ * 规范里那套 shadow / canary / 灰度发布，是"服务端改一次影响所有用户"才需要的；
+ * 对一个 BYOK 本地 Agent，影响其他使用者的改动**在构造上就是代码发布**，
+ * 只能由人改代码、发版本，运行时循环碰不到。所以本模块不做灰度——不是省事，是范围不同。
+ *
+ * 这也决定了留出集测的是什么：**这位作者未来的任务**，不是别的用户。
+ */
+export const AUTHORITY = Object.freeze({
+  scope: 'workspace',
+  affects: '仅本工作区的作者',
+  generalizationTarget: '同一位作者、未参与提案的后续任务',
+  outOfScope: '任何会影响其他使用者的改动（提示词库、候选库、评估器、安全规则）→ 属于代码发布，必须由人做',
+});
+
+/**
+ * 评估器阶梯（理论 v1.1 第 5 条）：**能机械判定的，不许用模型评审代替**。
+ *
+ * 顺序即优先级。`llm_judge` 排在最后，而且不允许作为唯一证据——
+ * 否则优化器会把"让评委模型喜欢"当成目标，而这正是本项目早就明确拒绝的方向。
+ */
+export const EVIDENCE_LADDER = Object.freeze([
+  { id: 'mechanical', rank: 1, desc: '确定性可判定：事实层有没有被改、冻结句有没有被碰、写作门拦不拦得住' },
+  { id: 'recomputable', rank: 2, desc: '同输入同输出、可复算：提问重复率、动作轨迹是否随状态变化' },
+  { id: 'blind_human', rank: 3, desc: '作者盲选（不知道哪个是哪个）' },
+  { id: 'llm_judge', rank: 4, desc: '模型评审——最后手段，不得作为唯一证据' },
+]);
+
+/** 发布门（v0，作用于本工作区）。数值是保守起点，不是"调好的参数"。 */
 export const GATE_V0 = Object.freeze({
   requirePairedComparison: true,
   requireHeldOut: true,
   minSampleSize: 8,
   minHeldOutDelta: 0.02,
   maxRegressionRate: 0,
+  maxCostDelta: 0.25,
 });
 
 // ── 存储 ──────────────────────────────────────────────────────────────
@@ -258,6 +289,16 @@ export function judge(results = {}) {
   const regression = Number(results.regressionRate);
   if (!Number.isFinite(regression)) reasons.push('missing_regression_rate');
   else if (regression > GATE_V0.maxRegressionRate) reasons.push(`regression(${regression}>${GATE_V0.maxRegressionRate})`);
+
+  // 成本进门槛：不能靠多花 token 换指标
+  const cost = Number(results.costDelta);
+  if (!Number.isFinite(cost)) reasons.push('missing_cost_delta');
+  else if (cost > GATE_V0.maxCostDelta) reasons.push(`cost_too_high(${cost}>${GATE_V0.maxCostDelta})`);
+
+  // 证据种类：机械可判定优先；模型评审不得单独作为依据
+  const ev = EVIDENCE_LADDER.find((e) => e.id === results.evidence);
+  if (!ev) reasons.push('missing_evidence_kind');
+  else if (ev.id === 'llm_judge' && !results.corroboratedBy) reasons.push('llm_judge_cannot_stand_alone');
 
   return { passed: reasons.length === 0, reasons, gate: GATE_V0 };
 }
@@ -442,7 +483,13 @@ export function renderHarness(workspace) {
   lines.push('');
   lines.push('  发布门（v0）:');
   lines.push(`    配对对照 ${GATE_V0.requirePairedComparison ? '必须' : '不要求'} · 留出集 ${GATE_V0.requireHeldOut ? '必须' : '不要求'}`);
-  lines.push(`    样本量 ≥ ${GATE_V0.minSampleSize} · 留出集提升 ≥ ${GATE_V0.minHeldOutDelta} · 回归率 ≤ ${GATE_V0.maxRegressionRate}`);
+  lines.push(
+    `    样本量 ≥ ${GATE_V0.minSampleSize} · 留出集提升 ≥ ${GATE_V0.minHeldOutDelta} · 回归率 ≤ ${GATE_V0.maxRegressionRate} · 成本增幅 ≤ ${GATE_V0.maxCostDelta}`,
+  );
+  lines.push(`    证据种类（按优先级）: ${EVIDENCE_LADDER.map((e) => e.id).join(' > ')}（llm_judge 不得单独作证）`);
+  lines.push('');
+  lines.push(`  权限边界: 作用范围 ${AUTHORITY.affects}；留出集测的是「${AUTHORITY.generalizationTarget}」`);
+  lines.push(`            ${AUTHORITY.outOfScope}`);
   lines.push('');
   lines.push(`  账本: 提案 ${byType('harness.proposed')} · 拒收 ${byType('harness.rejected')} · 评估 ${byType('harness.evaluated')} · 发布 ${byType('harness.published')} · 回滚 ${byType('harness.rolled_back')}`);
   lines.push('');

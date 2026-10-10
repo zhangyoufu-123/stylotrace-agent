@@ -85,6 +85,12 @@ Stylotrace 是它的第一个垂直应用/实验场（深度写作）。核心�
 
 - `13-api.yaml`（OpenAPI 3.1；agent/run/events/trace/memory/feedback/replay/consolidate/tools）。
 
+## 5.1 CURRENT HARNESS 进化理论
+
+- `18-harness-evolution.md`（ECH-S v1.1）：权限由写入范围决定、可优化性前提（参数必须有张力）、
+  验收门三层分级、成本进门槛、评估器阶梯（模型评审不得单独作证）、样本量下限是拒绝条件。
+- 实施状态与差距：`../HARNESS-RELEASE.md`。
+
 ## 6. CURRENT ADR
 
 - `ADR/CSLA_ARCHITECTURE_DECISIONS.md`（12 条 ADR，冻结接口与不变量）。

@@ -30,6 +30,22 @@ assert.ok(h.FROZEN_ZONE.includes('evidence.*'), '证据门必须整层冻结');
 assert.ok(h.GATE_V0.minSampleSize >= 8, '发布门必须有样本量下限');
 assert.ok(!h.EVOLVABLE_KEYS.some((k) => k.startsWith('evidence.')), '证据门不得可进化');
 
+// 三张表两两不相交：冻结区 / 已接线白名单 / 已声明未接线
+for (const key of h.EVOLVABLE_KEYS) {
+  assert.ok(!Object.prototype.hasOwnProperty.call(h.DECLARED_NOT_WIRED, key), `${key} 不能同时在两张表里`);
+}
+// 白名单只放"有消费点"的键：2026-10 审计后发现 9 个键根本没接线
+assert.equal(h.EVOLVABLE_KEYS.length, 4, '白名单应只含已接线的提问权重 4 键');
+assert.equal(Object.keys(h.DECLARED_NOT_WIRED).length, 9, '未接线键应单列 9 个');
+// 每个白名单键都要登记消费符号，由 scripts/audit-harness-keys.mjs 验证符号真实存在
+for (const key of h.EVOLVABLE_KEYS) {
+  assert.ok(h.WIRING[key], `${key} 必须在 WIRING 里登记消费符号，否则视为未接线`);
+}
+// 未接线的键不许偷偷出现在 WIRING 里
+for (const key of Object.keys(h.DECLARED_NOT_WIRED)) {
+  assert.ok(!h.WIRING[key], `${key} 已判定未接线，不应再登记消费符号`);
+}
+
 // ── 基线 ──
 const w0 = mk('base');
 assert.equal(h.currentVersion(w0), 'H0');
@@ -73,7 +89,7 @@ assert.ok(err && err.violations[0].reason === 'not_evolvable', 'F2c 白名单外
 
 err = null;
 try {
-  h.propose(w0, { config: { 'writer.stopPolicy': () => 'always' } });
+  h.propose(w0, { config: { 'question.weights.cost': () => 1 } });
 } catch (e) {
   err = e;
 }
@@ -81,7 +97,7 @@ assert.ok(err && err.violations[0].reason === 'unsupported_value_type', 'F2d 函
 
 err = null;
 try {
-  h.propose(w0, { config: { 'memory.retrieval.topK': Number.NaN } });
+  h.propose(w0, { config: { 'question.weights.cost': Number.NaN } });
 } catch (e) {
   err = e;
 }
@@ -95,8 +111,17 @@ try {
 }
 assert.ok(err && err.violations[0].reason === 'empty_config', 'F2f 空候选必须拒收（不制造不改任何东西的版本）');
 
+err = null;
+try {
+  h.propose(w0, { config: { 'memory.retrieval.topK': 8 } });
+} catch (e) {
+  err = e;
+}
+assert.ok(err && err.violations[0].reason === 'no_consumer', 'F2g 未接线的键必须按 no_consumer 拒收');
+assert.ok(String(err.message).includes('no_consumer'), '报错要说明是没有消费点，而不是值写错了');
+
 // 被拒的候选要留下负证据（可审计，不是静默丢弃）
-assert.equal(h.releaseLog(w0).filter((r) => r.type === 'harness.rejected').length, 6, '6 次拒收都要进账本');
+assert.equal(h.releaseLog(w0).filter((r) => r.type === 'harness.rejected').length, 7, '7 次拒收都要进账本');
 assert.equal(h.currentVersion(w0), 'H0', '拒收不得改变当前版本');
 
 // ── 发布门 ──

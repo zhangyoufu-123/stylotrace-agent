@@ -91,6 +91,11 @@ Stylotrace 是它的第一个垂直应用/实验场（深度写作）。核心�
   验收门三层分级、成本进门槛、评估器阶梯（模型评审不得单独作证）、样本量下限是拒绝条件。
 - 实施状态与差距：`../HARNESS-RELEASE.md`。
 
+## 5.2 CURRENT 实施规划（对照真实代码）
+
+- `19-implementation-plan.md`：已核实的事实基线（逐条带代码位置）、按依赖排序的差距表、
+  修正后的 P0–P9 阶段。**最优先缺口是 D1：Writer 未接入运行周期——统一入口不产出文章。**
+
 ## 6. CURRENT ADR
 
 - `ADR/CSLA_ARCHITECTURE_DECISIONS.md`（12 条 ADR，冻结接口与不变量）。

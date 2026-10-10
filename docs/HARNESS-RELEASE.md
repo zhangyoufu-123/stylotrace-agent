@@ -52,8 +52,11 @@
 
 ### 4.1 `agent/src/csl/harness.js` — Harness Release Manager
 
-- **可进化白名单 13 键**，只允许标量或标量数组。函数、表达式、代码片段一律拒收——
+- **可进化白名单 4 键**（提问权重），只允许标量或标量数组。函数、表达式、代码片段一律拒收——
   否则"进化"会退化成任意代码注入。
+  **2026-10-10 修正**：原来写了 13 个键，静态消费点审计（`scripts/audit-harness-keys.mjs`）发现
+  只有 4 个真的被读。其余 9 个移入 `DECLARED_NOT_WIRED`，逐条写明缺哪段接线，提案一律拒收
+  （reason=`no_consumer`）。另有 `WIRING` 登记表：每个白名单键必须声明消费符号，由审计脚本验证符号真实存在。
 - **冻结区 9 类**（`state.schema` / `auth.*` / `tool.permissions` / `events.integrity` /
   `safety.*` / `evaluator.*` / `eval.heldOutSet` / `gate.frozenZone` / `evidence.*`）。
   执法靠白名单；冻结清单的作用是让"什么不许动"写在代码里，并有结构性测试断言两者永不相交。
@@ -132,7 +135,8 @@ stylotrace harness rollback --to H0
 - **Web / API 入口**：`harness` 目前只有 CLI（治理面属于离线运维，这是有意的）。
 - **Claim Ledger**：认知门缺 claim 级结构。
 - **B0–B4 对照**：规范 §11 的四层评估一个都没跑。
-- **其余 10 个可进化键还没做活性探针**：现在只有提问权重那一组被证明是活的，
-  检索条数 / 候选数 / 动作权重很可能同样是装饰品，需要各自的探针才能确认。
+- **其余 9 个键已判定"无消费点"并单列**（不是"待验证"，是确认了改不生效）。
+  要它们能调，先得补消费点：`replay.js` / `hrmr.js` 现在读的是函数默认参数而不是 Harness 配置，
+  `actions.js` 的动作价值表、写作候选数、`prompt.systemSuffix` 都是写死的。
 - **投入 Tension 的候选是手工调的**：`own-story` / `personal-fact` 的 ig / cost / intrusion
   是我按手感定的数值，没有实测依据。它们的作用是让权重"有张力"，不是"调好了"。

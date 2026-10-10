@@ -31,24 +31,53 @@ export const HARNESS_SCHEMA = 1;
 export const BASELINE_VERSION = 'H0';
 
 /**
- * 可进化的键（白名单）。值只能是字符串/有限数字/布尔，或它们的数组。
- * 加键是一次架构决定，不是随手改：每加一个键都要能回答"它在哪个测试里被验证"。
+ * 可进化的键（白名单）= **已接线**的键：有真实消费点，改了会进到执行路径。
+ *
+ * 2026-10-10 静态消费点审计（§11.3 第一层，脚本 `scripts/audit-harness-keys.mjs` 可复跑）：
+ * 原先 13 个键里只有这 4 个真的被读。其余 9 个设置之后什么都不会发生——
+ * 它们不是"还没验证"，是**根本没有消费点**。按主提示词 §4.4/§11.3 的裁决，
+ * 这类参数应当移出候选进化空间，而不是留着让优化器去搜一个不存在的空间。
+ * 它们被移到 DECLARED_NOT_WIRED，逐条写明缺哪段接线，修好后移回本表。
+ *
+ * 值只能是字符串/有限数字/布尔，或它们的数组。
  */
 export const EVOLVABLE_KEYS = Object.freeze([
   'question.weights.informationGain',
   'question.weights.cost',
   'question.weights.intrusion',
   'question.weights.repetition',
-  'action.weights.search',
-  'action.weights.askHuman',
-  'action.weights.stop',
-  'action.weights.generate',
-  'memory.retrieval.topK',
-  'memory.retrieval.decay',
-  'writer.candidateCount',
-  'writer.stopPolicy',
-  'prompt.systemSuffix',
 ]);
+
+/**
+ * 接线登记表：每个白名单键必须声明"它被哪个符号消费"。
+ *
+ * 存在的理由：光看键名会误判。提问权重不是以 `question.weights.cost` 这个字符串被读的，
+ * 而是经 `questionWeights()` 投影成 `{wIg, lambda, mu, rho}` 再注入 `chooseQuestion`。
+ * 早先的审计脚本只搜键名，于是把 4 个真的接线的键判成了"没消费点"。
+ * 所以"接线"不能靠注释声称，也不能靠字符串巧合——必须登记，并由 `scripts/audit-harness-keys.mjs` 验证符号真的存在。
+ */
+export const WIRING = Object.freeze({
+  'question.weights.informationGain': 'questionWeights',
+  'question.weights.cost': 'questionWeights',
+  'question.weights.intrusion': 'questionWeights',
+  'question.weights.repetition': 'questionWeights',
+});
+
+/**
+ * 已声明但**未接线**：提案一律拒收（reason=`no_consumer`）。
+ * 这份表的作用是把"我们打算让它可调"和"它真的可调"分开，防止把声明当能力。
+ */
+export const DECLARED_NOT_WIRED = Object.freeze({
+  'action.weights.search': '动作价值表在 csl/actions.js 里写死，不读 Harness',
+  'action.weights.askHuman': '同上',
+  'action.weights.stop': '同上',
+  'action.weights.generate': '同上',
+  'memory.retrieval.topK': 'csl/replay.js:109 是函数默认参数，不读 Harness',
+  'memory.retrieval.decay': 'csl/hrmr.js:178 是函数默认参数，不读 Harness',
+  'writer.candidateCount': '写作候选数写死在调用处，无消费点',
+  'writer.stopPolicy': '无消费点',
+  'prompt.systemSuffix': '无消费点',
+});
 
 /**
  * 冻结区。真正的执法是白名单；这份清单的用途是：
@@ -255,6 +284,12 @@ export function checkCandidate(config) {
   }
   const violations = [];
   for (const [key, value] of Object.entries(config)) {
+    // 先判"有没有消费点"：没接线的键连值类型都不必看——
+    // 报 no_consumer 才能让人明白"设置它不会有任何效果"，而不是以为写错了类型。
+    if (Object.prototype.hasOwnProperty.call(DECLARED_NOT_WIRED, key)) {
+      violations.push({ key, reason: 'no_consumer', detail: DECLARED_NOT_WIRED[key] });
+      continue;
+    }
     if (!EVOLVABLE_KEYS.includes(key)) {
       violations.push({ key, reason: matchesFrozen(key) ? 'frozen_zone' : 'not_evolvable' });
       continue;
@@ -475,11 +510,15 @@ export function renderHarness(workspace) {
   lines.push(`  发布时间: ${cur.publishedAt || '（基线，未发布过新版本）'}`);
   lines.push(`  审批人  : ${cur.approvedBy || '—'}`);
   lines.push('');
-  lines.push(`  生效配置（${Object.keys(cur.config).length} 项覆盖 / 共 ${EVOLVABLE_KEYS.length} 个可进化键）:`);
+  lines.push(`  生效配置（${Object.keys(cur.config).length} 项覆盖 / 共 ${EVOLVABLE_KEYS.length} 个**已接线**键）:`);
   for (const k of EVOLVABLE_KEYS) {
     const overridden = Object.prototype.hasOwnProperty.call(cur.config, k);
     lines.push(`    ${overridden ? '*' : ' '} ${k} = ${JSON.stringify(cfg[k])}`);
   }
+  lines.push('');
+  const declared = Object.keys(DECLARED_NOT_WIRED);
+  lines.push(`  已声明但未接线（${declared.length} 个，提案会被拒收 reason=no_consumer）:`);
+  for (const k of declared) lines.push(`    - ${k} —— ${DECLARED_NOT_WIRED[k]}`);
   lines.push('');
   lines.push('  发布门（v0）:');
   lines.push(`    配对对照 ${GATE_V0.requirePairedComparison ? '必须' : '不要求'} · 留出集 ${GATE_V0.requireHeldOut ? '必须' : '不要求'}`);

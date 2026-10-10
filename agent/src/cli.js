@@ -2164,6 +2164,7 @@ export async function runCli(argv, io = {}) {
               evidenceLadder: H.EVIDENCE_LADDER.map((e) => e.id),
               weightLiveness: EL.weightLiveness(),
               evolvable: H.EVOLVABLE_KEYS,
+              declaredNotWired: H.DECLARED_NOT_WIRED,
               frozen: H.FROZEN_ZONE,
             }, null, 2));
             break;

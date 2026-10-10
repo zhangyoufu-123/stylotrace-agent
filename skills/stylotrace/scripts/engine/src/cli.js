@@ -1955,6 +1955,7 @@ export async function runCli(argv, io = {}) {
           if (r.question) lines.push(`追问/检查点: ${r.question}`);
           if (r.actionTrace?.length) lines.push(`动作轨迹: ${r.actionTrace.map((t) => t.action).join('→')}`);
           lines.push(`状态: v${r.stateVersion} · coreIdea=${r.state?.coreIdea || '（未确认）'}`);
+          if (r.dispatchNote) lines.push(`执行: ${r.dispatchNote}`);
           if (r.reply) lines.push(`回复: ${r.reply}`);
           return lines.join('\n');
         };

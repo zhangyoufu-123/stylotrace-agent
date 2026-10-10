@@ -151,6 +151,16 @@ export const CAPABILITIES = [
     evidence: '事件账本（状态面板）+ 结果账本（stylotrace outcomes / 状态面板 ⑦）+ 决断卡；三样都能读出来核查',
   },
   {
+    id: 'app-dispatch',
+    name: '应用派发（统一入口真的产出产物）',
+    layer: '集成层',
+    entry: { cli: 'stylotrace run', web: 'POST /api/csl/turn', api: 'POST /api/csl/turn' },
+    status: 'live',
+    evidence:
+      'ACTION_APP_MAP 声明的 executor 由 csl/dispatch.js 真正执行；write/outline 已接线，rag/redteam/deliver 明示未实现；' +
+      '产物只来自 Writer 写入的 draft.md，executor 未执行时 artifact 为 null，绝不返回认知循环里的拼接串（csl-dispatch 测试）',
+  },
+  {
     id: 'sidecar',
     name: 'Sidecar 协议（小模型影响大模型输出）',
     layer: '集成层',

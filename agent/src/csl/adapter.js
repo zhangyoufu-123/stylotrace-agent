@@ -5,6 +5,7 @@ import * as st from './state.js';
 import * as rt from './runtime.js';
 import * as br from './brief.js';
 import { readCanonical, syncCoreIdea, canWrite } from './canonical.js';
+import { dispatchApp, renderDispatch } from './dispatch.js';
 
 /** 认知动作 → 应用执行器映射（应用层只做转换，不重新认知）。 */
 export const ACTION_APP_MAP = {
@@ -71,6 +72,16 @@ export async function runTask({
   const app = mapAction(cognitiveAction);
   const gate = canWrite(workspace, { sessionId });
   const blocked = app.app === 'write' && gate.blocked;
+  // 派发：把 ACTION_APP_MAP 声明的 executor 真正执行掉（Route A）。
+  // 一次调用只执行一个 executor，不在一次调用里跑完整链——否则绕过 Human Checkpoint，
+  // 并且违反预算硬约束（§9）。失败不抛异常，以 executed/reason 返回。
+  const executed = await dispatchApp(workspace, {
+    app: app.app,
+    executor: app.executor,
+    sessionId,
+    llm,
+    maxSections: Number(metadata.maxSections) || 1,
+  });
   return {
     channel,
     application,
@@ -85,6 +96,11 @@ export async function runTask({
     reply: r.reply || '',
     actionTrace: r.actionTrace || [],
     needsHuman: r.kind === 'ask' || r.kind === 'checkpoint' || blocked,
+    executed,
+    // 产物只来自 executor（Writer 写进 draft.md）；executor 没执行时这里是 null，
+    // 绝不把认知循环里 `hypotheses.join('。')` 那种拼接串当文章返回。
+    artifact: executed.executed ? executed.artifact || null : null,
+    dispatchNote: renderDispatch(executed),
     stateVersion: st.stateVersion(workspace, { sessionId }),
     state: canonicalSnapshot(workspace, sessionId),
     usage: r.usage || null,

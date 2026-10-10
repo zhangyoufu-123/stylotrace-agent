@@ -32,7 +32,7 @@
 
 | # | 差距 | 阻塞什么 | 状态 |
 |---|---|---|---|
-| **D1** | **Writer 未接入运行周期**：统一入口只做认知决策与门控，不产出文章；能写文章的 director 轨不经过 CSLA | 阻塞**所有**产品级证据——没有产物就没有质量、意图保真、编辑负担可测 | 未动 |
+| **D1** | **Writer 未接入运行周期**：统一入口只做认知决策与门控，不产出文章 | 阻塞**所有**产品级证据——没有产物就没有质量、意图保真、编辑负担可测 | **本轮修掉主链**，见 §5.1 |
 | D2 | 版本谱系：六维里只实现了 1 维 | 阻塞归因（分不清是换了配置还是换了模型） | 未动 |
 | D3 | 预算硬约束 | 阻塞成本控制与"耗尽后零调用"验证 | 未动 |
 | D4 | Claim Ledger + 冻结 Gate | 阻塞事实保护与过度断言拦截 | 未动 |
@@ -48,12 +48,12 @@
 README / install.sh / site / docs / extras 共 22 个文件的私有仓库地址已改为公开仓库；
 守卫通过（无论文、无密钥、无本机路径）；公开仓库 HEAD `33f2059`。
 
-**P0.5 — Writer 接入运行周期 [修正·新增]**
-主提示词 P0–P9 里没有任何一格是"把 Writer 接回运行周期"。但不做这一步，
-P4 之后所有阶段都拿不到产物，§16 的成功标准一条也验证不了。
-最小做法有两条路线，必须选一条并写清：要么让 `runTask` 真的派发 `ACTION_APP_MAP` 的 executor，
-要么**明确声明** `runTask` 是决策端点、写作由宿主执行，并给出宿主的执行契约。
-验收：`stylotrace run`（或声明中的宿主入口）能对同一任务产出可读产物；有端到端测试断言产物非空且来自 Writer 而非字符串拼接。
+**P0.5 — Writer 接入运行周期 [修正·新增]** 🟡 主链已完成（§5.1）
+已选路线 A：`runTask` 真的派发 `ACTION_APP_MAP` 的 executor。`write` / `outline` 已接线并端到端实测；
+`rag` / `redteam` / `deliver` 明示未实现。
+剩余：Web 与 MCP 的调用方契约要跟上（现在它们会收到 `executed` / `artifact` / `dispatchNote`，
+Web 的 `/api/csl/turn` 目前只把 `r` 原样返回，尚未据此更新前端展示；MCP 同理）。
+验收：`stylotrace run` 在具备大纲与核心主张的工作区上产出可读产物 ✅；有端到端测试断言产物非空且来自 Writer 而非字符串拼接 ✅。
 
 **P1 — 版本谱系进入 Canonical State**
 验收：六个维度可追踪；H0/H1 混合运行可正确归因；session 隔离与版本冲突测试通过。
@@ -99,6 +99,27 @@ P4 之后所有阶段都拿不到产物，§16 的成功标准一条也验证不
 冻结区靠白名单执法——白名单外的一切，循环连碰都碰不到。
 
 ## 5. 本轮的增量
+
+### 5.1 应用派发（D1 主链）
+
+新增 `agent/src/csl/dispatch.js`：`ACTION_APP_MAP` 里写了很久、却从来没有调用点的 `executor` 现在真的被执行。
+语义是一次调用执行一个 executor（`S_t → a_t → Execute(a_t) → S_{t+1}`），不在一次调用里跑完整链——
+那会绕过 Human Checkpoint，并且违反预算硬约束。
+
+- `write` executor：从 `draft.md` 已写到位置继续，每次写一节，返回产物、进度与剩余节数。
+- `outline` executor：`write` 的前置条件；素材门槛没过就如实报缺什么，不硬撑。
+- `rag` / `redteam` / `deliver`：**明示 `not_implemented`**，不伪装成功。
+- `clarify` / `checkpoint` / `chat`：由认知循环内联处理，不重复执行。
+
+`runTask` 新增 `executed` / `artifact` / `dispatchNote` 三个字段。**关键不变量**：
+`artifact` 只可能来自 executor；executor 没执行时它是 `null`——
+认知循环内部 `hypotheses.join('。')` 那个拼接串永远不会被当成文章返回。
+
+**端到端实测（真实模型，非 mock）**：`dispatchApp('write')` 在带大纲与核心主张的工作区上
+产出了 306 字的正文节，写入 `draft.md`。文中出现"这话我没法证实"这类限定——
+说明 Brief 里的作者立场约束确实传到了 Writer，而不是字符串拼接。
+
+### 5.2 Harness 白名单诚实化
 
 **Harness 白名单从"13 个声明"改成"4 个已接线 + 9 个未接线单列"。**
 
